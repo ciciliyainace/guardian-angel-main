@@ -1,1 +1,0 @@
-var e=`Triage, acknowledge and resolve security alerts.`;export{e as t};

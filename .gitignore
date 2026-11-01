@@ -65,6 +65,7 @@ dist-ssr/
 .vinxi/
 .tanstack/
 .nitro/
+.vercel/
 *.local
 
 # 6. Cloudflare / Wrangler Deploy Artifacts

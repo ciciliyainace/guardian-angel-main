@@ -1,1 +1,0 @@
-var e=`Status of sensors, models and backend services.`;export{e as t};

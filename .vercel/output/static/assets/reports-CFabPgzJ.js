@@ -1,1 +1,0 @@
-var e=`Export events and review the audit trail.`;export{e as t};

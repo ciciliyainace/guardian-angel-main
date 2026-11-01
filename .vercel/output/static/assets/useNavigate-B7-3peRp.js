@@ -1,1 +1,0 @@
-import{P as e,j as t}from"./api-Dc0X4gYE.js";import{r as n}from"./link-CIsRnffq.js";var r=e(t(),1);function i(e){let t=n();return r.useCallback(n=>t.navigate({...n,from:n.from??e?.from}),[e?.from,t])}export{i as t};

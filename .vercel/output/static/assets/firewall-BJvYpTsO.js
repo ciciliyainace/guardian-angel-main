@@ -1,1 +1,0 @@
-var e=`Review and approve block requests (simulation only).`;export{e as t};
