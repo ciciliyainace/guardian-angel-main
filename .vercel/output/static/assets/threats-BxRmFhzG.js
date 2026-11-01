@@ -1,0 +1,1 @@
+var e=`High-risk detections from rules and ML models.`;export{e as t};

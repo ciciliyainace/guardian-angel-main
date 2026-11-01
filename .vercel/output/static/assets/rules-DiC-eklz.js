@@ -1,0 +1,1 @@
+var e=`Enable, disable and tune rule-based detections.`;export{e as t};

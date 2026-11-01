@@ -1,0 +1,1 @@
+var e=`Real-time network flow monitoring and volumetric inspection.`;export{e as t};
