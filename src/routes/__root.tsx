@@ -4,6 +4,8 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
+  useNavigate,
   HeadContent,
   Scripts,
   type ErrorComponentProps,
@@ -18,6 +20,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
+import { AuthProvider, useAuth } from "@/lib/auth-context";
 
 function NotFoundComponent() {
   return (
@@ -116,9 +119,6 @@ function RootShell({ children }: { children: ReactNode }) {
     </html>
   );
 }
-
-import { AuthProvider, useAuth } from "@/lib/auth-context";
-import { useRouterState, useNavigate } from "@tanstack/react-router";
 
 const PUBLIC_AUTH_PATHS = [
   "/login",
