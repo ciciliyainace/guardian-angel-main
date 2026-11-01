@@ -1,0 +1,348 @@
+import { useEffect, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { PageHeader, Panel } from "@/components/soc";
+import { useTheme } from "@/lib/theme";
+import { api, getAuthToken } from "@/lib/api";
+
+const TABS = ["profile", "security", "appearance", "help", "about", "feedback"] as const;
+type Tab = (typeof TABS)[number];
+const T = "Settings — Sentinel AI";
+const D = "Profile, appearance and application settings.";
+export const Route = createFileRoute("/settings")({
+  validateSearch: (s: Record<string, unknown>): { tab?: Tab } =>
+    TABS.includes(s["tab"] as Tab) ? { tab: s["tab"] as Tab } : {},
+  head: () => ({ meta: [{ title: T }, { name: "description", content: D }, { property: "og:title", content: T }, { property: "og:description", content: D }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
+  component: Settings,
+});
+
+function Settings() {
+  const { tab = "profile" } = Route.useSearch();
+  const navigate = useNavigate({ from: "/settings" });
+  const { theme, setTheme } = useTheme();
+
+  // Profile State
+  const [profile, setProfile] = useState<{
+    displayName?: string;
+    email?: string;
+    role?: string;
+    username?: string;
+    email_verified?: boolean;
+    auth_providers?: string[];
+    last_login_at?: string;
+  }>({
+    displayName: "Ciciliya Inace",
+    email: "analyst@sentinelai.local",
+    role: "analyst",
+    username: "ciciliya-inace",
+    email_verified: true,
+    auth_providers: ["password"],
+  });
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
+
+  // Feedback State
+  const [fbCategory, setFbCategory] = useState("False Positive");
+  const [fbMessage, setFbMessage] = useState("");
+  const [submittingFb, setSubmittingFb] = useState(false);
+
+  // Security Login Form State
+  const [loginUser, setLoginUser] = useState("admin");
+  const [loginPass, setLoginPass] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [hasToken, setHasToken] = useState(!!getAuthToken());
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingProfile(true);
+    api
+      .getProfile()
+      .then((p) => {
+        if (isMounted && p) setProfile(p);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (isMounted) setLoadingProfile(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoggingIn(true);
+    try {
+      await api.login(loginUser, loginPass);
+      setHasToken(true);
+      toast.success(`Authenticated as ${loginUser}`);
+      const updatedProfile = await api.getProfile();
+      setProfile(updatedProfile);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Authentication failed";
+      toast.error(msg);
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await api.logout();
+    setHasToken(false);
+    toast.info("Logged out");
+  };
+
+  const handleSendFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fbMessage.trim()) {
+      toast.error("Please enter a feedback message");
+      return;
+    }
+    setSubmittingFb(true);
+    try {
+      await api.submitFeedback(fbCategory, fbMessage);
+      toast.success("Feedback submitted to SentinelAI security team");
+      setFbMessage("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to submit feedback";
+      toast.error(msg);
+    } finally {
+      setSubmittingFb(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!profile.email) return;
+    setResendingVerification(true);
+    try {
+      const res = await fetch(`${api.isLive() ? "http://127.0.0.1:8000/api/v1" : "/api/v1"}/auth/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: profile.email }),
+      });
+      const data = await res.json();
+      toast.info("Verification Request Dispatched", {
+        description: data.message || "A verification link has been sent to your email.",
+      });
+    } catch {
+      toast.error("Failed to resend verification email.");
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <PageHeader title="Settings" description={D} />
+      <Tabs value={tab} onValueChange={(v) => navigate({ search: { tab: v as Tab } })}>
+        <TabsList className="flex-wrap">
+          {TABS.map((t) => (
+            <TabsTrigger key={t} value={t} className="capitalize">
+              {t}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* Profile Tab */}
+        <TabsContent value="profile">
+          <Panel title="User Profile">
+            {loadingProfile ? (
+              <div className="flex h-20 items-center text-sm text-muted-foreground">
+                <Loader2 className="mr-2 size-4 animate-spin" /> Loading profile...
+              </div>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="font-medium text-foreground">Name: </span>
+                  <span className="text-muted-foreground">{profile.displayName || profile.username}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">Username: </span>
+                  <span className="font-mono text-xs text-muted-foreground">{profile.username}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">Email: </span>
+                  <span className="font-mono text-xs text-muted-foreground">{profile.email}</span>
+                  {profile.email_verified ? (
+                    <span className="ml-2 inline-flex items-center rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
+                      ✓ Verified
+                    </span>
+                  ) : (
+                    <span className="ml-2 inline-flex items-center gap-1.5">
+                      <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                        ⚠ Unverified
+                      </span>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={handleResendVerification}
+                        disabled={resendingVerification}
+                        className="h-auto p-0 text-xs text-primary underline"
+                      >
+                        {resendingVerification ? "Sending..." : "Resend Link"}
+                      </Button>
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">Assigned Role: </span>
+                  <span className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold capitalize text-foreground">
+                    {profile.role}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">Authentication: </span>
+                  <span className="inline-flex items-center gap-1">
+                    {(profile.auth_providers || ["password"]).map((p) => (
+                      <span
+                        key={p}
+                        className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground capitalize"
+                      >
+                        {p}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              </div>
+            )}
+          </Panel>
+        </TabsContent>
+
+        {/* Security Tab */}
+        <TabsContent value="security">
+          <Panel title="Account & API Authentication">
+            <div className="max-w-md space-y-4 text-sm">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="font-medium">Active Session Status</div>
+                  <div className="text-xs text-muted-foreground">
+                    {hasToken ? "JWT Token Active" : "Unauthenticated (Operating in Guest/Demo Mode)"}
+                  </div>
+                </div>
+                {hasToken && (
+                  <Button variant="outline" size="sm" onClick={handleLogout}>
+                    Sign Out
+                  </Button>
+                )}
+              </div>
+
+              {!hasToken && (
+                <form onSubmit={handleLogin} className="space-y-3 rounded-lg border p-4">
+                  <div className="text-xs font-medium uppercase text-muted-foreground">Sign In to Backend</div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Username</label>
+                    <Input
+                      value={loginUser}
+                      onChange={(e) => setLoginUser(e.target.value)}
+                      placeholder="Username or email"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Password</label>
+                    <Input
+                      type="password"
+                      value={loginPass}
+                      onChange={(e) => setLoginPass(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                    />
+                  </div>
+                  <Button type="submit" size="sm" disabled={loggingIn} className="w-full">
+                    {loggingIn ? <Loader2 className="mr-2 size-3 animate-spin" /> : null}
+                    Authenticate
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground">
+                    Default analyst: <code className="rounded bg-muted px-1">ciciliya-inace</code> / <code className="rounded bg-muted px-1">&lt;configured password&gt;</code>
+                  </p>
+                </form>
+              )}
+            </div>
+          </Panel>
+        </TabsContent>
+
+        {/* Appearance Tab */}
+        <TabsContent value="appearance">
+          <Panel title="Theme">
+            <div className="flex gap-2">
+              {(["dark", "light", "system"] as const).map((t) => (
+                <Button
+                  key={t}
+                  variant={theme === t ? "default" : "outline"}
+                  onClick={() => setTheme(t)}
+                  className="capitalize"
+                >
+                  {t}
+                </Button>
+              ))}
+            </div>
+          </Panel>
+        </TabsContent>
+
+        {/* Help Tab */}
+        <TabsContent value="help">
+          <Panel title="Help & Navigation">
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>• Press <kbd className="rounded border bg-muted px-1 font-mono text-xs">⌘K</kbd> or <kbd className="rounded border bg-muted px-1 font-mono text-xs">Ctrl+K</kbd> to search pages, alerts, and block requests.</p>
+              <p>• Review and approve firewall block requests strictly from the Firewall Management tab.</p>
+              <p>• Detection models and rules operate on an alert-first principle: automated blocking is disabled by default.</p>
+            </div>
+          </Panel>
+        </TabsContent>
+
+        {/* About Tab */}
+        <TabsContent value="about">
+          <Panel title="About Sentinel AI">
+            <p className="text-sm text-muted-foreground">
+              SentinelAI — AI-Powered Firewall Attack Detection System for Computer Networks.
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Architecture: FastAPI Backend · Scikit-learn (Random Forest & Isolation Forest) · Suricata IDS Connector · Windows Defender Firewall Integration · React Frontend.
+            </p>
+          </Panel>
+        </TabsContent>
+
+        {/* Feedback Tab */}
+        <TabsContent value="feedback">
+          <Panel title="Submit Feedback & False Positives">
+            <form onSubmit={handleSendFeedback} className="max-w-lg space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Category</label>
+                <select
+                  value={fbCategory}
+                  onChange={(e) => setFbCategory(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="False Positive">False Positive Report</option>
+                  <option value="Rule Suggestion">Rule Suggestion</option>
+                  <option value="Bug Report">System Bug Report</option>
+                  <option value="Feature Request">Feature Request</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Message / Explanation</label>
+                <Textarea
+                  value={fbMessage}
+                  onChange={(e) => setFbMessage(e.target.value)}
+                  placeholder="Describe the issue, false positive event ID, or suggested rule parameter..."
+                  rows={4}
+                  required
+                />
+              </div>
+              <Button type="submit" size="sm" disabled={submittingFb}>
+                {submittingFb && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+                Submit Feedback
+              </Button>
+            </form>
+          </Panel>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+

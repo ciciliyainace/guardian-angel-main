@@ -1,0 +1,4 @@
+{"source_ip": "198.51.100.44", "dest_ip": "192.168.1.50", "src_port": 49152, "dst_port": 80, "protocol": "TCP", "category": "DoS-like traffic", "source": "JSON File Collector", "severity": "high", "risk_score": 78}
+{"source_ip": "203.0.113.19", "dest_ip": "192.168.1.20", "src_port": 51234, "dst_port": 22, "protocol": "TCP", "category": "Brute-force", "source": "JSON File Collector", "severity": "high", "risk_score": 72}
+{"source_ip": "198.51.100.89", "dest_ip": "192.168.1.10", "src_port": 39482, "dst_port": 445, "protocol": "TCP", "category": "Port scanning", "source": "JSON File Collector", "severity": "medium", "risk_score": 58}
+{"source_ip": "192.0.2.140", "dest_ip": "192.168.1.100", "src_port": 44122, "dst_port": 3389, "protocol": "TCP", "category": "Suspicious connection", "source": "JSON File Collector", "severity": "low", "risk_score": 25}

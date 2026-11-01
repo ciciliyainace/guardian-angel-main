@@ -1,0 +1,138 @@
+import time
+from typing import Dict, Any, List
+from app.detection.rule_engine import RuleEngine
+from app.detection.thresholds import score_to_severity
+from app.ml.inference import run_inference
+
+
+class HybridDetectionEngine:
+    def __init__(self, rule_engine: RuleEngine):
+        self.rule_engine = rule_engine
+
+    def analyze(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Correlate signature/threshold rules with ML classifier & anomaly detection.
+        Synthesizes composite risk score, severity, evidence, and actionable recommendation.
+        """
+        now_ms = event_data.get("timestamp", int(time.time() * 1000))
+        event_id = event_data.get("id", f"EVT-{int(now_ms % 100000)}")
+
+        detection_sources: List[str] = []
+        evidence: Dict[str, Any] = {}
+        model_versions: Dict[str, str] = {}
+        rule_ids: List[str] = []
+
+        # 1. Rule Engine Evaluation
+        rule_result = self.rule_engine.evaluate(event_data)
+        rule_matched = rule_result["matched"]
+        rule_score = 0
+        rule_category = None
+
+        if rule_matched:
+            detection_sources.append("Rule engine")
+            rule_ids.extend(rule_result["rule_ids"])
+            evidence["rules"] = rule_result["evidence"]
+            rule_category = rule_result["category"]
+
+            # Base score from rule severity
+            sev_scores = {"critical": 90, "high": 75, "medium": 50, "low": 25}
+            rule_score = sev_scores.get(rule_result["severity"], 25)
+
+        # 2. Machine Learning Inference
+        flow_features = event_data.get("flow_features", {}) or {}
+        ml_result = run_inference(flow_features)
+        model_versions.update(ml_result.get("versions", {}))
+
+        ml_score = ml_result.get("ml_risk_score", 0)
+        ml_category = ml_result.get("predicted_category", "Benign")
+
+        if ml_result.get("rf_result"):
+            detection_sources.append("Random Forest")
+            evidence["random_forest"] = {
+                "class": ml_result["rf_result"]["predicted_class"],
+                "confidence": ml_result["rf_result"]["confidence"],
+            }
+
+        if ml_result.get("if_result") and ml_result["if_result"]["is_anomalous"]:
+            detection_sources.append("Isolation Forest")
+            evidence["anomaly_detection"] = {
+                "anomaly_score": ml_result["if_result"]["raw_score"],
+                "intensity": ml_result["if_result"]["anomaly_intensity"],
+            }
+
+        # Suricata Signature check
+        metadata = event_data.get("metadata") or {}
+        if metadata.get("signature"):
+            if "Suricata" not in detection_sources:
+                detection_sources.append("Suricata")
+                evidence["suricata"] = metadata
+
+        # 3. Hybrid Correlation & Risk Scoring
+        # Prevent double-counting: take max base + bonus for multi-detector consensus
+        base_score = max(rule_score, ml_score)
+        consensus_bonus = 0
+        if rule_matched and ml_result["is_attack"]:
+            consensus_bonus = 15  # Both rules and ML agree on attack
+        elif rule_matched and ml_result.get("if_result", {}).get("is_anomalous"):
+            consensus_bonus = 8   # Rule match corroborated by statistical anomaly
+
+        composite_score = min(100, base_score + consensus_bonus)
+        severity = score_to_severity(composite_score)
+
+        # Category arbitration
+        if rule_matched and rule_category != "Anomalous traffic":
+            final_category = rule_category
+        elif ml_result["is_attack"] and ml_category != "Benign":
+            final_category = ml_category
+        elif ml_result.get("if_result", {}).get("is_anomalous"):
+            final_category = "Anomalous traffic"
+        else:
+            final_category = event_data.get("category", "Benign")
+
+        # Determine confidence and primary detection reason
+        if ml_result.get("rf_result") and ml_result["rf_result"]["is_attack"]:
+            confidence = ml_result["rf_result"]["confidence"]
+            primary_reason = f"Random Forest classified flow as {final_category} ({int(confidence * 100)}% confidence)"
+        elif rule_matched:
+            confidence = 0.90
+            primary_reason = f"Detection rule matched: {rule_category} (Rules: {', '.join(rule_ids)})"
+        elif ml_result.get("if_result", {}).get("is_anomalous"):
+            confidence = round(0.5 + float(ml_result["if_result"]["anomaly_intensity"]) * 0.4, 2)
+            primary_reason = f"Isolation Forest identified statistical flow anomaly (intensity: {ml_result['if_result']['anomaly_intensity']})"
+        elif ml_result.get("rf_result"):
+            confidence = ml_result["rf_result"]["confidence"]
+            primary_reason = f"Random Forest baseline classification ({int(confidence * 100)}% confidence)"
+        else:
+            confidence = 0.50
+            primary_reason = "Standard baseline telemetry inspection"
+
+        if ml_result.get("inference_errors"):
+            evidence["ml_errors"] = ml_result["inference_errors"]
+
+        # Recommended Action (Adhering to ALERT FIRST principle)
+        if composite_score >= 85:
+            rec_action = "Require administrator approval for immediate firewall block and isolate endpoint."
+        elif composite_score >= 65:
+            rec_action = "Escalate alert for SOC investigation. Monitor source IP for repeated scanning."
+        elif composite_score >= 40:
+            rec_action = "Acknowledge event and correlate with related flows."
+        else:
+            rec_action = "Log event and retain for baseline analytics."
+
+        if not detection_sources:
+            detection_sources.append("Heuristic baseline")
+
+        return {
+            "event_id": event_id,
+            "detection_sources": detection_sources,
+            "predicted_category": final_category,
+            "severity": severity,
+            "risk_score": composite_score,
+            "confidence": round(float(confidence), 4),
+            "reason": primary_reason,
+            "evidence": evidence,
+            "model_versions": model_versions,
+            "rule_ids": rule_ids,
+            "recommended_action": rec_action,
+            "timestamp": now_ms,
+        }

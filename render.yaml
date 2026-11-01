@@ -1,0 +1,33 @@
+# ==========================================
+# SentinelAI Infrastructure Blueprint for Render
+# ==========================================
+services:
+  - type: web
+    name: sentinelai-backend
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health/ping
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: DATABASE_TYPE
+        value: mongodb
+      - key: MONGODB_URI
+        sync: false # Set manually in Render Dashboard Secrets
+      - key: MONGODB_DATABASE
+        value: sentinelai
+      - key: SECRET_KEY
+        generateValue: true # Render automatically generates a 32-character secure secret
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 1440
+      - key: FIREWALL_MODE
+        value: simulation
+      - key: ALLOW_FIREWALL_BLOCKING
+        value: false
+      - key: ALERT_ONLY_MODE
+        value: true
+      - key: CORS_ORIGINS
+        sync: false # Set to your deployed frontend domain, e.g. ["https://sentinelai.pages.dev"]
