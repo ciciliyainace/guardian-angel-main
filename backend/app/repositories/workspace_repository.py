@@ -62,3 +62,4 @@ class WorkspaceRepository:
             ]
         }).sort("created_at", -1)
         return [Workspace.from_doc(doc) for doc in cursor if doc]
+

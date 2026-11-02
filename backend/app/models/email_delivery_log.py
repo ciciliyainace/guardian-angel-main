@@ -65,3 +65,4 @@ class EmailDeliveryLog:
             error_message=doc.get("error_message"),
             _id=doc.get("_id"),
         )
+

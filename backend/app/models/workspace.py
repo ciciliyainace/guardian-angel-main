@@ -82,3 +82,4 @@ class Workspace:
             "memberCount": len(self.members),
             "settings": self.settings,
         }
+
