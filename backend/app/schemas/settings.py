@@ -22,7 +22,8 @@ class ProfileResponse(BaseSchema):
     username: str
     displayName: str = Field(..., alias="display_name")
     role: str
-    email_verified: bool = Field(False, alias="emailVerified")
+    email_verified: bool = False
+    emailVerified: bool = False
     auth_providers: list[str] = Field(default_factory=lambda: ["password"], alias="authProviders")
     default_workspace_id: Optional[str] = Field(None, alias="defaultWorkspaceId")
     workspace_name: Optional[str] = Field(None, alias="workspaceName")

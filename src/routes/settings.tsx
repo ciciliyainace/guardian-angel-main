@@ -44,7 +44,7 @@ function Settings() {
     email: user?.email || "",
     role: user?.role || "analyst",
     username: user?.username || "",
-    email_verified: user?.email_verified ?? false,
+    email_verified: Boolean(user?.email_verified ?? (user as any)?.emailVerified ?? false),
     auth_providers: user?.auth_providers || ["password"],
     default_workspace_id: user?.default_workspace_id,
     workspace_name: user?.workspace_name,
@@ -81,7 +81,16 @@ function Settings() {
     api
       .getProfile()
       .then((p) => {
-        if (isMounted && p) setProfile(p);
+        if (isMounted && p) {
+          const verified = Boolean(p.email_verified ?? (p as any).emailVerified ?? user?.email_verified ?? false);
+          setProfile({
+            ...p,
+            email_verified: verified,
+            displayName: p.displayName || (p as any).display_name || p.username,
+            workspace_name: p.workspace_name || (p as any).workspaceName,
+            default_workspace_id: p.default_workspace_id || (p as any).defaultWorkspaceId,
+          });
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -344,7 +353,7 @@ function Settings() {
                 <div>
                   <span className="font-medium text-foreground">Email: </span>
                   <span className="font-mono text-xs text-muted-foreground">{profile.email}</span>
-                  {profile.email_verified ? (
+                  {Boolean(profile.email_verified || (profile as any).emailVerified || user?.email_verified) ? (
                     <span className="ml-2 inline-flex items-center rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
                       ✓ Verified
                     </span>

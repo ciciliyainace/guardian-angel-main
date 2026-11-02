@@ -74,7 +74,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return null;
         }
       } else {
-        const userData = (await res.json()) as AuthUser;
+        const rawData = await res.json();
+        const userData: AuthUser = {
+          ...rawData,
+          email_verified: Boolean(rawData.email_verified ?? rawData.emailVerified ?? false),
+          displayName: rawData.displayName || rawData.display_name || rawData.username,
+          workspace_name: rawData.workspace_name || rawData.workspaceName,
+          default_workspace_id: rawData.default_workspace_id || rawData.defaultWorkspaceId,
+        };
         setUser(userData);
         return userData;
       }
@@ -140,13 +147,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await res.json();
+      const userData: AuthUser = {
+        ...data.user,
+        email_verified: Boolean(data.user.email_verified ?? data.user.emailVerified ?? false),
+        displayName: data.user.displayName || data.user.display_name || data.user.username,
+        workspace_name: data.user.workspace_name || data.user.workspaceName,
+        default_workspace_id: data.user.default_workspace_id || data.user.defaultWorkspaceId,
+      };
       setAuthToken(data.access_token);
       setToken(data.access_token);
-      setUser(data.user);
+      setUser(userData);
       if (typeof window !== "undefined") {
-        localStorage.setItem("sentinelai_demo_user", JSON.stringify(data.user));
+        localStorage.setItem("sentinelai_demo_user", JSON.stringify(userData));
       }
-      return data.user;
+      return userData;
     } catch (err: unknown) {
       const e = err as Error;
       if (e.message.includes("Failed to fetch") || e.message.toLowerCase().includes("networkerror")) {
