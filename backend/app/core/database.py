@@ -209,12 +209,24 @@ def init_indexes(db: Database):
         db.network_events.create_index("category")
         db.network_events.create_index([("severity", 1), ("timestamp", -1)])
         db.network_events.create_index([("source_ip", 1), ("dest_ip", 1)])
+        db.network_events.create_index("data_origin")
+        db.network_events.create_index("sensor_id")
+        db.network_events.create_index("is_simulated")
+        db.network_events.create_index([("sensor_id", 1), ("id", 1)])
 
         # 3. alerts
         db.alerts.create_index("id", unique=True)
         db.alerts.create_index([("timestamp", -1)])
         db.alerts.create_index([("status", 1), ("severity", 1)])
         db.alerts.create_index("related_event_id")
+        db.alerts.create_index("data_origin")
+        db.alerts.create_index("sensor_id")
+
+        # 3b. sensors & sensor_heartbeats (Live network telemetry architecture)
+        db.sensors.create_index("sensor_id", unique=True)
+        db.sensors.create_index("api_key_hash", unique=True)
+        db.sensors.create_index("status")
+        db.sensor_heartbeats.create_index([("sensor_id", 1), ("timestamp", -1)])
 
         # 4. detection_rules
         db.detection_rules.create_index("id", unique=True)

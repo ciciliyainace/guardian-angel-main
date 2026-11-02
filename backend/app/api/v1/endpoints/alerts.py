@@ -15,6 +15,7 @@ def get_alerts(
     status: Optional[str] = None,
     severity: Optional[str] = None,
     category: Optional[str] = None,
+    origin: Optional[str] = Query(None, description="Data origin: live, simulated, or all"),
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=500, alias="pageSize"),
     db: Database = Depends(get_db),
@@ -24,6 +25,7 @@ def get_alerts(
         status=status,
         severity=severity,
         category=category,
+        origin=origin,
         page=page,
         page_size=page_size,
     )

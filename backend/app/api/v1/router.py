@@ -15,12 +15,14 @@ from app.api.v1.endpoints import (
     settings,
     profile,
     feedback,
+    sensors,
 )
 
 api_router = APIRouter()
 
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(sensors.router, prefix="/sensors", tags=["sensors"])
 api_router.include_router(events.router, prefix="/events", tags=["events"])
 api_router.include_router(traffic.router, prefix="/traffic", tags=["traffic"])
 api_router.include_router(alerts.router, prefix="/alerts", tags=["alerts"])

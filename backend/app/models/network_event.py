@@ -23,6 +23,8 @@ class NetworkEvent:
         collector_metadata: Optional[Dict[str, Any]] = None,
         ingestion_status: str = "processed",
         is_simulated: bool = False,
+        sensor_id: Optional[str] = None,
+        data_origin: Optional[str] = None,
         created_at: Optional[datetime] = None,
         _id: Optional[Any] = None,
         **kwargs,
@@ -44,7 +46,11 @@ class NetworkEvent:
         self.flow_features = flow_features or {}
         self.collector_metadata = collector_metadata or {}
         self.ingestion_status = ingestion_status
-        self.is_simulated = is_simulated or ("SIM-" in str(id))
+        self.sensor_id = sensor_id
+        
+        sim = is_simulated or ("SIM-" in str(id)) or (data_origin == "simulated")
+        self.is_simulated = sim
+        self.data_origin = data_origin if data_origin in ("live", "simulated") else ("simulated" if sim else "live")
         self.created_at = created_at or datetime.now(timezone.utc)
         self._id = _id
 
@@ -68,6 +74,8 @@ class NetworkEvent:
             "collector_metadata": self.collector_metadata,
             "ingestion_status": self.ingestion_status,
             "is_simulated": self.is_simulated,
+            "data_origin": self.data_origin,
+            "sensor_id": self.sensor_id,
             "created_at": self.created_at,
         }
 
@@ -94,6 +102,8 @@ class NetworkEvent:
             collector_metadata=doc.get("collector_metadata"),
             ingestion_status=doc.get("ingestion_status", "processed"),
             is_simulated=doc.get("is_simulated", False),
+            data_origin=doc.get("data_origin"),
+            sensor_id=doc.get("sensor_id"),
             created_at=doc.get("created_at"),
             _id=doc.get("_id"),
         )
@@ -114,5 +124,7 @@ class NetworkEvent:
             "status": self.status,
             "duplicates": self.duplicates,
             "isSimulated": self.is_simulated,
+            "dataOrigin": self.data_origin,
+            "sensorId": self.sensor_id,
             "eventSource": self.event_source,
         }

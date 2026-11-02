@@ -6,8 +6,36 @@ from app.core.config import settings
 from app.ml.registry import registry
 from app.workers.ingestion_worker import ingestion_worker
 from app.utils.time_utils import current_epoch_ms
+from app.repositories.sensor_repository import SensorRepository
 
 router = APIRouter()
+
+
+@router.get("/detailed")
+def get_detailed_monitoring_health(db: Database = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Returns true monitoring state based on genuine sensor registrations,
+    heartbeats, and live telemetry ingestion.
+    """
+    db_ok = db_manager.ping()
+    sensor_repo = SensorRepository(db)
+    monitoring_state = sensor_repo.get_monitoring_state(timeout_sec=60)
+
+    # Cross-reference with in-process collectors if any
+    suricata_col = next((c for c in ingestion_worker.collectors if "Suricata" in c.name), None)
+    socket_col = next((c for c in ingestion_worker.collectors if "Socket" in c.name), None)
+
+    if suricata_col and suricata_col.status == "Operational":
+        monitoring_state["suricata_operational"] = True
+    if socket_col and socket_col.status == "Operational":
+        monitoring_state["windows_socket_operational"] = True
+
+    monitoring_state["database"] = "connected" if db_ok else "disconnected"
+    monitoring_state["models_loaded"] = registry.rf.is_loaded or registry.iforest.is_loaded
+    monitoring_state["timestamp"] = current_epoch_ms()
+    monitoring_state["version"] = settings.VERSION
+
+    return monitoring_state
 
 
 @router.get("/ping")

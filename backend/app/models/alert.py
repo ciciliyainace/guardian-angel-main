@@ -17,6 +17,9 @@ class Alert:
         notes: Optional[str] = None,
         model_versions: Optional[Dict[str, str]] = None,
         rule_ids: Optional[List[str]] = None,
+        sensor_id: Optional[str] = None,
+        data_origin: Optional[str] = None,
+        recommendation: Optional[str] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
         _id: Optional[Any] = None,
@@ -34,6 +37,9 @@ class Alert:
         self.notes = notes
         self.model_versions = model_versions or {}
         self.rule_ids = rule_ids or []
+        self.sensor_id = sensor_id
+        self.data_origin = data_origin if data_origin in ("live", "simulated") else ("simulated" if "SIM-" in str(id) else "live")
+        self.recommendation = recommendation
         self.created_at = created_at or datetime.now(timezone.utc)
         self.updated_at = updated_at or datetime.now(timezone.utc)
         self._id = _id
@@ -52,6 +58,9 @@ class Alert:
             "notes": self.notes,
             "model_versions": self.model_versions,
             "rule_ids": self.rule_ids,
+            "sensor_id": self.sensor_id,
+            "data_origin": self.data_origin,
+            "recommendation": self.recommendation,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -73,6 +82,9 @@ class Alert:
             notes=doc.get("notes"),
             model_versions=doc.get("model_versions") or {},
             rule_ids=doc.get("rule_ids") or [],
+            sensor_id=doc.get("sensor_id"),
+            data_origin=doc.get("data_origin"),
+            recommendation=doc.get("recommendation"),
             created_at=doc.get("created_at"),
             updated_at=doc.get("updated_at"),
             _id=doc.get("_id"),

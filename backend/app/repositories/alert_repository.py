@@ -23,6 +23,7 @@ class AlertRepository:
         status: Optional[str] = None,
         severity: Optional[str] = None,
         category: Optional[str] = None,
+        origin: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[Alert], int, int, int]:
@@ -36,6 +37,12 @@ class AlertRepository:
 
         if category and category != "all":
             q["category"] = category
+
+        if origin and origin != "all":
+            if origin == "live":
+                q["$or"] = [{"data_origin": "live"}, {"is_simulated": False}]
+            elif origin == "simulated":
+                q["$or"] = [{"data_origin": "simulated"}, {"is_simulated": True}]
 
         total_count = self.collection.count_documents(q)
         total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1

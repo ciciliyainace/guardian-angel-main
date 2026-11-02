@@ -95,6 +95,11 @@ class EventService:
         import uuid
         event_id = event_dict.get("id") or f"EVT-{now_ms}-{uuid.uuid4().hex[:6]}"
         is_simulated = bool(event_dict.get("is_simulated") or event_dict.get("isSimulated") or ("SIM-" in str(event_id)))
+        sensor_id = event_dict.get("sensor_id")
+        data_origin = event_dict.get("data_origin")
+        if not data_origin:
+            data_origin = "simulated" if is_simulated else "live"
+
         event = NetworkEvent(
             id=event_id,
             timestamp=now_ms,
@@ -111,15 +116,18 @@ class EventService:
             duplicates=event_dict.get("duplicates", 0),
             event_source=event_dict.get("event_source", "collector"),
             flow_features=event_dict.get("flow_features") or event_dict.get("flowFeatures"),
-            collector_metadata=event_dict.get("metadata"),
+            collector_metadata=event_dict.get("metadata") or event_dict.get("raw_payload"),
             ingestion_status="processed",
             is_simulated=is_simulated,
+            sensor_id=sensor_id,
+            data_origin=data_origin,
         )
         saved_event = self.event_repo.create(event)
 
         # 4. Generate Alert if high risk, risk_score >= 60, or verified anomaly (never for Benign)
         is_anomaly = bool(detection_result.get("is_anomaly")) if detection_result else False
         if (severity in ("critical", "high") or risk_score >= 60 or is_anomaly) and category != "Benign":
+            recommendation = (detection_result.get("recommendation") if detection_result else None) or "Monitor and investigate host connections."
             alert = Alert(
                 id=f"ALT-{saved_event.id.replace('EVT-', '')}",
                 related_event_id=saved_event.id,
@@ -132,6 +140,9 @@ class EventService:
                 status="new",
                 model_versions=detection_result["model_versions"] if detection_result else {},
                 rule_ids=detection_result["rule_ids"] if detection_result else [],
+                sensor_id=sensor_id,
+                data_origin=data_origin,
+                recommendation=recommendation,
             )
             self.alert_repo.create(alert)
 
@@ -157,6 +168,7 @@ class EventService:
         category: Optional[str] = None,
         status: Optional[str] = None,
         range_hours: Optional[int] = None,
+        origin: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
         sort_by: str = "timestamp",
@@ -168,6 +180,7 @@ class EventService:
             category=category,
             status=status,
             range_hours=range_hours,
+            origin=origin,
             page=page,
             page_size=page_size,
             sort_by=sort_by,

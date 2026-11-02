@@ -59,12 +59,19 @@ class EventRepository:
         category: Optional[str] = None,
         status: Optional[str] = None,
         range_hours: Optional[int] = None,
+        origin: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
         sort_by: str = "timestamp",
         sort_dir: str = "desc",
     ) -> Tuple[List[NetworkEvent], int, int, int]:
         q: Dict[str, Any] = {}
+
+        if origin and origin != "all":
+            if origin == "live":
+                q["$or"] = [{"data_origin": "live"}, {"is_simulated": False}]
+            elif origin == "simulated":
+                q["$or"] = [{"data_origin": "simulated"}, {"is_simulated": True}]
 
         if query_str and query_str.strip():
             escaped = re.escape(query_str.strip())
@@ -112,31 +119,57 @@ class EventRepository:
         items = [NetworkEvent.from_doc(doc) for doc in cursor if doc]
         return items, total_count, total_pages, page
 
-    def count_total(self) -> int:
-        return self.collection.count_documents({})
+    def _build_origin_filter(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> Dict[str, Any]:
+        q: Dict[str, Any] = {}
+        if data_origin and data_origin != "all":
+            if data_origin == "live":
+                q["$or"] = [{"data_origin": "live"}, {"is_simulated": False}]
+            elif data_origin == "simulated":
+                q["$or"] = [{"data_origin": "simulated"}, {"is_simulated": True}]
+        if since_ms and since_ms > 0:
+            q["timestamp"] = {"$gte": since_ms}
+        return q
 
-    def count_active(self) -> int:
-        return self.collection.count_documents({"status": {"$ne": "resolved"}})
+    def count_total(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> int:
+        q = self._build_origin_filter(data_origin, since_ms)
+        return self.collection.count_documents(q)
 
-    def count_critical(self) -> int:
-        return self.collection.count_documents({"severity": "critical"})
+    def count_active(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> int:
+        q = self._build_origin_filter(data_origin, since_ms)
+        q["status"] = {"$ne": "resolved"}
+        return self.collection.count_documents(q)
 
-    def count_suspicious(self) -> int:
-        return self.collection.count_documents({"severity": {"$in": ["critical", "high", "medium"]}})
+    def count_critical(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> int:
+        q = self._build_origin_filter(data_origin, since_ms)
+        q["severity"] = "critical"
+        return self.collection.count_documents(q)
 
-    def category_counts(self) -> List[Dict[str, Any]]:
-        pipeline = [
+    def count_suspicious(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> int:
+        q = self._build_origin_filter(data_origin, since_ms)
+        q["severity"] = {"$in": ["critical", "high", "medium"]}
+        return self.collection.count_documents(q)
+
+    def category_counts(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> List[Dict[str, Any]]:
+        match_q = self._build_origin_filter(data_origin, since_ms)
+        pipeline = []
+        if match_q:
+            pipeline.append({"$match": match_q})
+        pipeline.extend([
             {"$group": {"_id": "$category", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}},
-        ]
+        ])
         results = self.collection.aggregate(pipeline)
         return [{"category": r["_id"], "count": r["count"]} for r in results if r.get("_id")]
 
-    def severity_counts(self) -> List[Dict[str, Any]]:
-        pipeline = [
+    def severity_counts(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> List[Dict[str, Any]]:
+        match_q = self._build_origin_filter(data_origin, since_ms)
+        pipeline = []
+        if match_q:
+            pipeline.append({"$match": match_q})
+        pipeline.extend([
             {"$group": {"_id": "$severity", "count": {"$sum": 1}}},
             {"$sort": {"count": -1}},
-        ]
+        ])
         results = self.collection.aggregate(pipeline)
         return [{"severity": r["_id"], "count": r["count"]} for r in results if r.get("_id")]
 

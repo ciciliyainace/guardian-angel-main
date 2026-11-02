@@ -66,8 +66,8 @@ export function AppSidebar() {
         ))}
       </SidebarContent>
       <SidebarFooter>
-        <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-[11px] font-semibold text-warning group-data-[collapsible=icon]:hidden">
-          <BarChart3 className="size-3.5" /> Demo data · v0.1.0
+        <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-2 py-1.5 text-[11px] font-semibold text-primary group-data-[collapsible=icon]:hidden">
+          <BarChart3 className="size-3.5" /> SentinelAI · Host Telemetry
         </div>
       </SidebarFooter>
     </Sidebar>

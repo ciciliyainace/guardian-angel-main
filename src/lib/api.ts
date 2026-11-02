@@ -78,6 +78,36 @@ export interface OverviewData {
   suspiciousDelta?: number;
 }
 
+export interface DetailedMonitoringHealth {
+  overall_status: "LIVE" | "STANDBY" | "NO_LIVE_SENSOR";
+  is_live: boolean;
+  active_sensor_count: number;
+  active_sensors: string[];
+  suricata_operational: boolean;
+  windows_socket_operational: boolean;
+  message: string;
+  database: string;
+  models_loaded: boolean;
+  timestamp: number;
+  version: string;
+}
+
+export interface SensorItem {
+  sensor_id: string;
+  name: string;
+  hostname?: string;
+  ip_address?: string;
+  collector_types: string[];
+  status: string;
+  enrolled_by: string;
+  created_at?: string;
+  last_heartbeat_at?: string;
+  last_telemetry_at?: string;
+  total_events_ingested: number;
+  is_alive: boolean;
+  collector_details: Record<string, any>;
+}
+
 export const api = {
   // Authentication
   login: async (usernameOrEmail: string, password: string) => {
@@ -143,28 +173,71 @@ export const api = {
       if (!found) throw new Error("Event not found");
       return found;
     }),
-  trafficSeries: () => request("/analytics/traffic-series", () => mock.trafficSeries),
-  overviewSummary: () =>
-    request<OverviewData>("/analytics/summary", () => {
-      const total = mock.trafficSeries.reduce((a, b) => a + b.total, 0);
-      const benign = mock.trafficSeries.reduce((a, b) => a + b.benign, 0);
-      const active = mock.events.filter((e) => e.status !== "resolved").length;
-      const critical = mock.events.filter((e) => e.severity === "critical").length;
+  trafficSeries: (origin = "live", timeRange = "24h") =>
+    request(`/analytics/traffic-series?origin=${origin}&range=${timeRange}`, () => mock.trafficSeries),
+  overviewSummary: (origin = "live", timeRange = "24h") =>
+    request<OverviewData>(`/analytics/summary?origin=${origin}&range=${timeRange}`, () => {
+      if (origin === "simulated") {
+        const total = mock.trafficSeries.reduce((a, b) => a + b.total, 0);
+        const benign = mock.trafficSeries.reduce((a, b) => a + b.benign, 0);
+        const active = mock.events.filter((e) => e.status !== "resolved").length;
+        const critical = mock.events.filter((e) => e.severity === "critical").length;
+        return {
+          totalEvents: total,
+          activeAlerts: active,
+          criticalThreats: critical,
+          suspiciousConnections: total - benign,
+          managedBlocks: mock.blockRequests.filter((b) => b.status === "approved").length,
+          detectionRecall: "91%",
+          eventsDelta: 6,
+          alertsDelta: 12,
+          threatsDelta: -4,
+          suspiciousDelta: 9,
+        };
+      }
       return {
-        totalEvents: total,
-        activeAlerts: active,
-        criticalThreats: critical,
-        suspiciousConnections: total - benign,
-        managedBlocks: mock.blockRequests.filter((b) => b.status === "approved").length,
-        detectionRecall: "91%",
-        eventsDelta: 6,
-        alertsDelta: 12,
-        threatsDelta: -4,
-        suspiciousDelta: 9,
+        totalEvents: 0,
+        activeAlerts: 0,
+        criticalThreats: 0,
+        suspiciousConnections: 0,
+        managedBlocks: 0,
+        detectionRecall: "--",
+        eventsDelta: 0,
+        alertsDelta: 0,
+        threatsDelta: 0,
+        suspiciousDelta: 0,
       };
     }),
-  categoryCounts: () => request("/analytics/categories", () => mock.categoryCounts),
-  severityCounts: () => request("/analytics/severity", () => mock.severityCounts),
+  detailedHealth: () =>
+    request<DetailedMonitoringHealth>("/health/detailed", () => ({
+      overall_status: "NO_LIVE_SENSOR",
+      is_live: false,
+      active_sensor_count: 0,
+      active_sensors: [],
+      suricata_operational: false,
+      windows_socket_operational: false,
+      message: "No live sensor connected — waiting for network telemetry.",
+      database: "offline",
+      models_loaded: false,
+      timestamp: Date.now(),
+      version: "1.2.0",
+    })),
+  sensors: () => request<SensorItem[]>("/sensors", () => []),
+  enrollSensor: (data: { sensor_id: string; name: string; hostname?: string; collector_types?: string[] }) =>
+    request<{ sensor_id: string; name: string; api_key: string; status: string; message: string }>("/sensors/enroll", () => ({
+      sensor_id: data.sensor_id,
+      name: data.name,
+      api_key: "sen_live_mock_key_only",
+      status: "active",
+      message: "Sensor enrolled in demo fallback mode",
+    }), {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  categoryCounts: (origin = "live", timeRange = "24h") =>
+    request(`/analytics/categories?origin=${origin}&range=${timeRange}`, () => (origin === "simulated" ? mock.categoryCounts : [])),
+  severityCounts: (origin = "live", timeRange = "24h") =>
+    request(`/analytics/severity?origin=${origin}&range=${timeRange}`, () => (origin === "simulated" ? mock.severityCounts : [])),
   firewallHistory: () => request("/analytics/firewall-history", () => mock.firewallHistory),
   modelMetrics: () =>
     request("/analytics/model-metrics", () => ({

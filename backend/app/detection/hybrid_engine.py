@@ -40,7 +40,24 @@ class HybridDetectionEngine:
 
         # 2. Machine Learning Inference
         flow_features = event_data.get("flow_features", {}) or {}
-        ml_result = run_inference(flow_features)
+        features_valid = event_data.get("features_valid")
+        if features_valid is None:
+            features_valid = bool(flow_features.get("flow_duration") or flow_features.get("total_fwd_packets"))
+
+        if features_valid:
+            ml_result = run_inference(flow_features)
+        else:
+            ml_result = {
+                "rf_result": None,
+                "if_result": None,
+                "dt_result": None,
+                "is_attack": False,
+                "predicted_category": "Benign",
+                "ml_risk_score": 0,
+                "versions": {},
+                "model_statuses": {},
+                "inference_errors": [],
+            }
         model_versions.update(ml_result.get("versions", {}))
 
         ml_score = ml_result.get("ml_risk_score", 0)
@@ -62,10 +79,18 @@ class HybridDetectionEngine:
 
         # Suricata Signature check
         metadata = event_data.get("metadata") or {}
-        if metadata.get("signature"):
+        raw_payload = event_data.get("raw_payload") or {}
+        suricata_alert = raw_payload.get("alert") or metadata.get("alert")
+        if suricata_alert or metadata.get("signature"):
             if "Suricata" not in detection_sources:
                 detection_sources.append("Suricata")
-                evidence["suricata"] = metadata
+            evidence["suricata"] = suricata_alert or metadata
+            rule_matched = True
+            sev = event_data.get("severity", "medium")
+            sev_scores = {"critical": 95, "high": 80, "medium": 55, "low": 30}
+            rule_score = max(rule_score, sev_scores.get(sev, 55))
+            if not rule_category:
+                rule_category = (suricata_alert.get("signature") if isinstance(suricata_alert, dict) else metadata.get("signature")) or "Suricata Alert"
 
         # 3. Hybrid Correlation & Risk Scoring
         # Prevent double-counting: take max base + bonus for multi-detector consensus
@@ -73,7 +98,7 @@ class HybridDetectionEngine:
         consensus_bonus = 0
         if rule_matched and ml_result["is_attack"]:
             consensus_bonus = 15  # Both rules and ML agree on attack
-        elif rule_matched and ml_result.get("if_result", {}).get("is_anomalous"):
+        elif rule_matched and (ml_result.get("if_result") or {}).get("is_anomalous"):
             consensus_bonus = 8   # Rule match corroborated by statistical anomaly
 
         composite_score = min(100, base_score + consensus_bonus)
@@ -84,7 +109,7 @@ class HybridDetectionEngine:
             final_category = rule_category
         elif ml_result["is_attack"] and ml_category != "Benign":
             final_category = ml_category
-        elif ml_result.get("if_result", {}).get("is_anomalous"):
+        elif (ml_result.get("if_result") or {}).get("is_anomalous"):
             final_category = "Anomalous traffic"
         else:
             final_category = event_data.get("category", "Benign")
@@ -96,7 +121,7 @@ class HybridDetectionEngine:
         elif rule_matched:
             confidence = 0.90
             primary_reason = f"Detection rule matched: {rule_category} (Rules: {', '.join(rule_ids)})"
-        elif ml_result.get("if_result", {}).get("is_anomalous"):
+        elif (ml_result.get("if_result") or {}).get("is_anomalous"):
             confidence = round(0.5 + float(ml_result["if_result"]["anomaly_intensity"]) * 0.4, 2)
             primary_reason = f"Isolation Forest identified statistical flow anomaly (intensity: {ml_result['if_result']['anomaly_intensity']})"
         elif ml_result.get("rf_result"):

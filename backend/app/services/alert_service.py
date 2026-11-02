@@ -21,6 +21,7 @@ class AlertService:
         status: Optional[str] = None,
         severity: Optional[str] = None,
         category: Optional[str] = None,
+        origin: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[Alert], int, int, int]:
@@ -28,6 +29,7 @@ class AlertService:
             status=status,
             severity=severity,
             category=category,
+            origin=origin,
             page=page,
             page_size=page_size,
         )

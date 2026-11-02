@@ -16,6 +16,7 @@ import { blockRequests, events, fmtTime, notificationsSeed } from "@/lib/mock-da
 import { SeverityBadge } from "@/components/soc";
 
 import { useAuth } from "@/lib/auth-context";
+import { api, type DetailedMonitoringHealth } from "@/lib/api";
 
 export function AppHeader() {
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -25,7 +26,27 @@ export function AppHeader() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState(notificationsSeed);
+  const [health, setHealth] = useState<DetailedMonitoringHealth | null>(null);
   const unread = notes.filter((n) => !n.read).length;
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchHealth = () => {
+      api.detailedHealth()
+        .then((h) => {
+          if (mounted) setHealth(h);
+        })
+        .catch(() => {
+          if (mounted) setHealth(null);
+        });
+    };
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const displayName = user?.display_name || user?.username || "Ciciliya Inace";
   const initials = displayName
@@ -66,12 +87,34 @@ export function AppHeader() {
       </div>
 
       <div className="ml-auto flex items-center gap-1.5">
-        <span className="hidden items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] font-bold tracking-wider text-warning md:inline-flex">
-          <FlaskConical className="size-3.5" /> SIMULATION MODE
-        </span>
-        <span className="hidden items-center gap-1.5 px-2 text-xs text-muted-foreground lg:inline-flex">
-          <span className="pulse-dot size-2 rounded-full bg-success" /> Monitoring (demo)
-        </span>
+        {health?.overall_status === "LIVE" ? (
+          <>
+            <span className="hidden items-center gap-1.5 rounded-md border border-success/40 bg-success/10 px-2 py-1 text-[11px] font-bold tracking-wider text-success md:inline-flex">
+              <span className="pulse-dot size-2 rounded-full bg-success" /> REAL TELEMETRY ACTIVE
+            </span>
+            <span className="hidden items-center gap-1.5 px-2 text-xs text-muted-foreground lg:inline-flex">
+              {health.active_sensor_count} Host Sensor(s)
+            </span>
+          </>
+        ) : health?.overall_status === "STANDBY" ? (
+          <>
+            <span className="hidden items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2 py-1 text-[11px] font-bold tracking-wider text-primary md:inline-flex">
+              <span className="size-2 rounded-full bg-primary animate-pulse" /> SENSOR STANDBY
+            </span>
+            <span className="hidden items-center gap-1.5 px-2 text-xs text-muted-foreground lg:inline-flex">
+              Waiting for flows
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="hidden items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] font-bold tracking-wider text-warning md:inline-flex">
+              <FlaskConical className="size-3.5" /> NO LIVE SENSOR
+            </span>
+            <span className="hidden items-center gap-1.5 px-2 text-xs text-muted-foreground lg:inline-flex">
+              Sensor agent offline
+            </span>
+          </>
+        )}
         <Button variant="outline" size="sm" className="gap-2 text-muted-foreground" onClick={() => setOpen(true)} aria-label="Search">
           <Search className="size-4" /><span className="hidden md:inline">Search</span>
           <kbd className="hidden rounded border bg-muted px-1 font-mono text-[10px] md:inline">⌘K</kbd>
