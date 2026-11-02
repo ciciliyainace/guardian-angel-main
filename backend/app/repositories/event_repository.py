@@ -60,12 +60,16 @@ class EventRepository:
         status: Optional[str] = None,
         range_hours: Optional[int] = None,
         origin: Optional[str] = None,
+        workspace_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
         sort_by: str = "timestamp",
         sort_dir: str = "desc",
     ) -> Tuple[List[NetworkEvent], int, int, int]:
         q: Dict[str, Any] = {}
+
+        if workspace_id:
+            q["workspace_id"] = workspace_id
 
         if origin and origin != "all":
             if origin == "live":
@@ -119,8 +123,15 @@ class EventRepository:
         items = [NetworkEvent.from_doc(doc) for doc in cursor if doc]
         return items, total_count, total_pages, page
 
-    def _build_origin_filter(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> Dict[str, Any]:
+    def _build_origin_filter(
+        self,
+        data_origin: Optional[str] = None,
+        since_ms: Optional[int] = None,
+        workspace_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         q: Dict[str, Any] = {}
+        if workspace_id:
+            q["workspace_id"] = workspace_id
         if data_origin and data_origin != "all":
             if data_origin == "live":
                 q["$or"] = [{"data_origin": "live"}, {"is_simulated": False}]
@@ -130,27 +141,52 @@ class EventRepository:
             q["timestamp"] = {"$gte": since_ms}
         return q
 
-    def count_total(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> int:
-        q = self._build_origin_filter(data_origin, since_ms)
+    def count_total(
+        self,
+        data_origin: Optional[str] = None,
+        since_ms: Optional[int] = None,
+        workspace_id: Optional[str] = None,
+    ) -> int:
+        q = self._build_origin_filter(data_origin, since_ms, workspace_id)
         return self.collection.count_documents(q)
 
-    def count_active(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> int:
-        q = self._build_origin_filter(data_origin, since_ms)
+    def count_active(
+        self,
+        data_origin: Optional[str] = None,
+        since_ms: Optional[int] = None,
+        workspace_id: Optional[str] = None,
+    ) -> int:
+        q = self._build_origin_filter(data_origin, since_ms, workspace_id)
         q["status"] = {"$ne": "resolved"}
         return self.collection.count_documents(q)
 
-    def count_critical(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> int:
-        q = self._build_origin_filter(data_origin, since_ms)
+    def count_critical(
+        self,
+        data_origin: Optional[str] = None,
+        since_ms: Optional[int] = None,
+        workspace_id: Optional[str] = None,
+    ) -> int:
+        q = self._build_origin_filter(data_origin, since_ms, workspace_id)
         q["severity"] = "critical"
         return self.collection.count_documents(q)
 
-    def count_suspicious(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> int:
-        q = self._build_origin_filter(data_origin, since_ms)
+    def count_suspicious(
+        self,
+        data_origin: Optional[str] = None,
+        since_ms: Optional[int] = None,
+        workspace_id: Optional[str] = None,
+    ) -> int:
+        q = self._build_origin_filter(data_origin, since_ms, workspace_id)
         q["severity"] = {"$in": ["critical", "high", "medium"]}
         return self.collection.count_documents(q)
 
-    def category_counts(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> List[Dict[str, Any]]:
-        match_q = self._build_origin_filter(data_origin, since_ms)
+    def category_counts(
+        self,
+        data_origin: Optional[str] = None,
+        since_ms: Optional[int] = None,
+        workspace_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        match_q = self._build_origin_filter(data_origin, since_ms, workspace_id)
         pipeline = []
         if match_q:
             pipeline.append({"$match": match_q})
@@ -161,8 +197,13 @@ class EventRepository:
         results = self.collection.aggregate(pipeline)
         return [{"category": r["_id"], "count": r["count"]} for r in results if r.get("_id")]
 
-    def severity_counts(self, data_origin: Optional[str] = None, since_ms: Optional[int] = None) -> List[Dict[str, Any]]:
-        match_q = self._build_origin_filter(data_origin, since_ms)
+    def severity_counts(
+        self,
+        data_origin: Optional[str] = None,
+        since_ms: Optional[int] = None,
+        workspace_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        match_q = self._build_origin_filter(data_origin, since_ms, workspace_id)
         pipeline = []
         if match_q:
             pipeline.append({"$match": match_q})

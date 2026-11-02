@@ -22,6 +22,7 @@ class AlertService:
         severity: Optional[str] = None,
         category: Optional[str] = None,
         origin: Optional[str] = None,
+        workspace_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[Alert], int, int, int]:
@@ -30,6 +31,7 @@ class AlertService:
             severity=severity,
             category=category,
             origin=origin,
+            workspace_id=workspace_id,
             page=page,
             page_size=page_size,
         )
@@ -57,5 +59,5 @@ class AlertService:
             )
         return alert
 
-    def get_summary(self) -> Dict[str, int]:
-        return self.alert_repo.count_by_status()
+    def get_summary(self, workspace_id: Optional[str] = None) -> Dict[str, int]:
+        return self.alert_repo.count_by_status(workspace_id=workspace_id)

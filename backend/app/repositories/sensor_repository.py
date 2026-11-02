@@ -137,3 +137,4 @@ class SensorRepository:
             "windows_socket_operational": windows_op,
             "message": message,
         }
+

@@ -18,14 +18,20 @@ def get_alerts(
     origin: Optional[str] = Query(None, description="Data origin: live, simulated, or all"),
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=500, alias="pageSize"),
+    current_user: Optional[User] = Depends(get_current_user),
     db: Database = Depends(get_db),
 ) -> Any:
+    workspace_id = None
+    if current_user and current_user.role.lower() not in ("admin", "administrator"):
+        workspace_id = current_user.default_workspace_id
+
     service = AlertService(db)
     items, _, _, _ = service.list_alerts(
         status=status,
         severity=severity,
         category=category,
         origin=origin,
+        workspace_id=workspace_id,
         page=page,
         page_size=page_size,
     )
@@ -33,9 +39,16 @@ def get_alerts(
 
 
 @router.get("/summary", response_model=AlertSummaryResponse)
-def get_alerts_summary(db: Database = Depends(get_db)) -> Any:
+def get_alerts_summary(
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Database = Depends(get_db),
+) -> Any:
+    workspace_id = None
+    if current_user and current_user.role.lower() not in ("admin", "administrator"):
+        workspace_id = current_user.default_workspace_id
+
     service = AlertService(db)
-    return service.get_summary()
+    return service.get_summary(workspace_id=workspace_id)
 
 
 @router.get("/{alert_id}", response_model=AlertResponse)

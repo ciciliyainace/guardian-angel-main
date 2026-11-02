@@ -159,8 +159,8 @@ class FlowAggregator:
         Accurately identifies connection metadata without fabricating unmeasured packet features.
         """
         timestamp_ms = int(raw.get("timestamp_ms") or (datetime.now(timezone.utc).timestamp() * 1000))
-        src_ip = str(raw.get("local_address") or raw.get("src_ip") or "127.0.0.1")
-        dst_ip = str(raw.get("remote_address") or raw.get("dst_ip") or "0.0.0.0")
+        src_ip = str(raw.get("local_address") or raw.get("src_ip") or raw.get("source_ip") or "127.0.0.1")
+        dst_ip = str(raw.get("remote_address") or raw.get("dst_ip") or raw.get("dest_ip") or "0.0.0.0")
         src_port = int(raw.get("local_port") or raw.get("src_port") or 0)
         dst_port = int(raw.get("remote_port") or raw.get("dst_port") or 0)
         proto = str(raw.get("protocol") or "TCP").upper()

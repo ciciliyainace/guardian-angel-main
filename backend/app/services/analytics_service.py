@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from pymongo.database import Database
 from app.repositories.event_repository import EventRepository
@@ -35,13 +35,14 @@ class AnalyticsService:
         self,
         data_origin: str = "live",
         time_range: str = "24h",
+        workspace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         since_ms = self._parse_time_range_ms(time_range)
 
-        total_events = self.event_repo.count_total(data_origin=data_origin, since_ms=since_ms)
-        active_alerts = self.event_repo.count_active(data_origin=data_origin, since_ms=since_ms)
-        critical_threats = self.event_repo.count_critical(data_origin=data_origin, since_ms=since_ms)
-        suspicious_connections = self.event_repo.count_suspicious(data_origin=data_origin, since_ms=since_ms)
+        total_events = self.event_repo.count_total(data_origin=data_origin, since_ms=since_ms, workspace_id=workspace_id)
+        active_alerts = self.event_repo.count_active(data_origin=data_origin, since_ms=since_ms, workspace_id=workspace_id)
+        critical_threats = self.event_repo.count_critical(data_origin=data_origin, since_ms=since_ms, workspace_id=workspace_id)
+        suspicious_connections = self.event_repo.count_suspicious(data_origin=data_origin, since_ms=since_ms, workspace_id=workspace_id)
 
         # Count approved firewall blocks
         approved_blocks = len(self.firewall_repo.list_requests(status="approved"))
@@ -63,7 +64,7 @@ class AnalyticsService:
             now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
             window_size = now_ms - since_ms
             prev_since = since_ms - window_size
-            prev_total = self.event_repo.count_total(data_origin=data_origin, since_ms=prev_since) - total_events
+            prev_total = self.event_repo.count_total(data_origin=data_origin, since_ms=prev_since, workspace_id=workspace_id) - total_events
             if prev_total > 0:
                 events_delta = int(((total_events - prev_total) / prev_total) * 100)
             elif total_events > 0:
@@ -82,9 +83,14 @@ class AnalyticsService:
             "suspiciousDelta": suspicious_delta,
         }
 
-    def get_categories(self, data_origin: str = "live", time_range: str = "24h") -> List[Dict[str, Any]]:
+    def get_categories(
+        self,
+        data_origin: str = "live",
+        time_range: str = "24h",
+        workspace_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         since_ms = self._parse_time_range_ms(time_range)
-        counts = self.event_repo.category_counts(data_origin=data_origin, since_ms=since_ms)
+        counts = self.event_repo.category_counts(data_origin=data_origin, since_ms=since_ms, workspace_id=workspace_id)
         if not counts:
             return [
                 {"category": "Port scanning", "count": 0},
@@ -96,9 +102,14 @@ class AnalyticsService:
             ]
         return counts
 
-    def get_severities(self, data_origin: str = "live", time_range: str = "24h") -> List[Dict[str, Any]]:
+    def get_severities(
+        self,
+        data_origin: str = "live",
+        time_range: str = "24h",
+        workspace_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         since_ms = self._parse_time_range_ms(time_range)
-        counts = self.event_repo.severity_counts(data_origin=data_origin, since_ms=since_ms)
+        counts = self.event_repo.severity_counts(data_origin=data_origin, since_ms=since_ms, workspace_id=workspace_id)
         sev_dict = {c["severity"]: c["count"] for c in counts}
         return [
             {"severity": s, "count": sev_dict.get(s, 0)}

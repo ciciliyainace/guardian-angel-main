@@ -12,6 +12,7 @@ from app.core.security import (
 )
 from app.repositories.user_repository import UserRepository
 from app.repositories.token_repository import TokenRepository
+from app.repositories.workspace_repository import WorkspaceRepository
 from app.services.email_service import EmailService
 from app.services.google_auth_service import GoogleAuthService
 from app.services.audit_service import AuditService
@@ -51,8 +52,9 @@ def register(
     """
     repo = UserRepository(db)
     token_repo = TokenRepository(db)
+    ws_repo = WorkspaceRepository(db)
     audit = AuditService(db)
-    email_service = EmailService()
+    email_service = EmailService(db)
 
     # 1. Validate password confirmation
     if payload.password != payload.confirm_password:
@@ -120,6 +122,11 @@ def register(
 
     created_user = repo.create(new_user)
 
+    # 5b. Provision default private workspace
+    workspace = ws_repo.get_or_create_default_workspace(created_user.id, created_user.username)
+    created_user.default_workspace_id = workspace.id
+    repo.update(created_user)
+
     # 6. Generate email verification token
     verification_token = token_repo.create_token(
         user_id=created_user.id,
@@ -150,6 +157,8 @@ def register(
         "is_active": created_user.is_active,
         "email_verified": created_user.email_verified,
         "auth_providers": created_user.auth_providers,
+        "default_workspace_id": workspace.id,
+        "workspace_name": workspace.name,
         "created_at": created_user.created_at,
         "first_login_at": None,
         "last_login_at": None,
@@ -171,8 +180,9 @@ def login(
     - Issues signed, time-limited JWT access token
     """
     repo = UserRepository(db)
+    ws_repo = WorkspaceRepository(db)
     audit = AuditService(db)
-    email_service = EmailService()
+    email_service = EmailService(db)
 
     identifier = payload.username_or_email.strip()
 
@@ -238,6 +248,15 @@ def login(
     # Update login timestamps
     user = repo.record_successful_login(user.id, now) or user
 
+    # Ensure user has a valid default workspace
+    ws = None
+    if user.default_workspace_id:
+        ws = ws_repo.get_by_id(user.default_workspace_id)
+    if not ws:
+        ws = ws_repo.get_or_create_default_workspace(user.id, user.username)
+        user.default_workspace_id = ws.id
+        repo.update(user)
+
     # Atomic first-login email check: exactly ONE email sent even under concurrent logins
     if is_first_login:
         claimed = repo.try_claim_first_login_notification(user.id, now)
@@ -247,13 +266,15 @@ def login(
 
     expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(
-        subject=user.username,
+        subject=str(user.id),
         role=user.role,
         expires_delta=expires,
         extra_claims={
+            "userId": user.id,
+            "username": user.username,
             "email": user.email,
             "displayName": user.display_name,
-            "userId": user.id,
+            "workspaceId": ws.id,
             "emailVerified": user.email_verified,
         },
     )
@@ -279,6 +300,8 @@ def login(
             "is_active": user.is_active,
             "email_verified": user.email_verified,
             "auth_providers": user.auth_providers,
+            "default_workspace_id": ws.id,
+            "workspace_name": ws.name,
             "created_at": user.created_at,
             "first_login_at": user.first_login_at,
             "last_login_at": user.last_login_at,
@@ -304,41 +327,36 @@ def logout(
 
 @router.get("/me", response_model=UserResponse)
 def get_me(
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: User = Depends(require_authenticated_user),
     db: Database = Depends(get_db),
 ) -> Any:
     """
-    Return currently authenticated profile.
-    If unauthenticated, returns the default demo analyst profile for compatibility with demo mode.
+    Return currently authenticated profile from MongoDB Atlas.
+    Requires valid authentication token. Returns verified tenant workspace details.
     """
-    if current_user:
-        return {
-            "id": current_user.id,
-            "email": current_user.email,
-            "username": current_user.username,
-            "display_name": current_user.display_name,
-            "role": current_user.role,
-            "is_active": current_user.is_active,
-            "email_verified": current_user.email_verified,
-            "auth_providers": current_user.auth_providers,
-            "created_at": current_user.created_at,
-            "first_login_at": current_user.first_login_at,
-            "last_login_at": current_user.last_login_at,
-        }
+    ws_repo = WorkspaceRepository(db)
+    ws = None
+    if current_user.default_workspace_id:
+        ws = ws_repo.get_by_id(current_user.default_workspace_id)
+    if not ws:
+        ws = ws_repo.get_or_create_default_workspace(current_user.id, current_user.username)
+        current_user.default_workspace_id = ws.id
+        UserRepository(db).update(current_user)
 
-    # Return default demo analyst profile if unauthenticated (preserves contract with existing tests)
     return {
-        "id": 1,
-        "email": "analyst@sentinelai.local",
-        "username": "ciciliya-inace",
-        "display_name": "Ciciliya Inace",
-        "role": "analyst",
-        "is_active": True,
-        "email_verified": True,
-        "auth_providers": ["password"],
-        "created_at": None,
-        "first_login_at": None,
-        "last_login_at": None,
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "display_name": current_user.display_name,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
+        "email_verified": current_user.email_verified,
+        "auth_providers": current_user.auth_providers,
+        "default_workspace_id": ws.id,
+        "workspace_name": ws.name,
+        "created_at": current_user.created_at,
+        "first_login_at": current_user.first_login_at,
+        "last_login_at": current_user.last_login_at,
     }
 
 
@@ -419,6 +437,18 @@ def google_auth(
     # Record login
     user = repo.record_successful_login(user.id, now) or user
 
+    email_service = EmailService(db)
+    ws_repo = WorkspaceRepository(db)
+
+    # Ensure default workspace
+    ws = None
+    if user.default_workspace_id:
+        ws = ws_repo.get_by_id(user.default_workspace_id)
+    if not ws:
+        ws = ws_repo.get_or_create_default_workspace(user.id, user.username)
+        user.default_workspace_id = ws.id
+        repo.update(user)
+
     # Atomic first-login notification claim
     if is_first_login:
         claimed = repo.try_claim_first_login_notification(user.id, now)
@@ -428,13 +458,15 @@ def google_auth(
 
     expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(
-        subject=user.username,
+        subject=str(user.id),
         role=user.role,
         expires_delta=expires,
         extra_claims={
+            "userId": user.id,
+            "username": user.username,
             "email": user.email,
             "displayName": user.display_name,
-            "userId": user.id,
+            "workspaceId": ws.id,
             "emailVerified": user.email_verified,
         },
     )
@@ -460,6 +492,8 @@ def google_auth(
             "is_active": user.is_active,
             "email_verified": user.email_verified,
             "auth_providers": user.auth_providers,
+            "default_workspace_id": ws.id,
+            "workspace_name": ws.name,
             "created_at": user.created_at,
             "first_login_at": user.first_login_at,
             "last_login_at": user.last_login_at,

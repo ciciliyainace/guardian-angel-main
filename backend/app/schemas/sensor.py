@@ -63,3 +63,4 @@ class SensorListItem(BaseModel):
     total_events_ingested: int
     is_alive: bool
     collector_details: Dict[str, Any] = Field(default_factory=dict)
+

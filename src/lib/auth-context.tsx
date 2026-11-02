@@ -93,21 +93,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(savedUser);
           return savedUser;
         } catch {
-          // fallback default analyst
+          // invalid cache
         }
       }
-      const defaultUser: AuthUser = {
-        id: 1,
-        username: "ciciliya-inace",
-        email: "ciciliyainace@gmail.com",
-        display_name: "Ciciliya Inace",
-        role: "analyst",
-        is_active: true,
-        email_verified: true,
-        auth_providers: ["password"],
-      };
-      setUser(defaultUser);
-      return defaultUser;
+      return null;
     }
 
     return null;
@@ -137,6 +126,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthToken(data.access_token);
       setToken(data.access_token);
       setUser(data.user);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sentinelai_demo_user", JSON.stringify(data.user));
+      }
       return data.user;
     } catch (err) {
       // If the backend threw a real API credential rejection, propagate it
@@ -334,6 +326,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearAuthToken();
       setToken(null);
       setUser(null);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("sentinelai_demo_user");
+      }
     }
   };
 

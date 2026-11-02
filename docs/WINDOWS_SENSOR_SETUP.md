@@ -90,3 +90,4 @@ If your internet connection drops or the backend restarts:
 1. The sensor agent automatically buffers unsent events in `.telemetry_spool.jsonl`.
 2. Heartbeats retry with backoff.
 3. Once the backend is reachable, spooled events are drained and forwarded without data loss.
+

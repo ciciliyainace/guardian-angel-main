@@ -9,7 +9,9 @@ from app.core.database import get_db
 from app.api.dependencies import require_admin, require_authenticated_user
 from app.models.user import User
 from app.models.sensor import Sensor, SensorHeartbeat
+from app.repositories.user_repository import UserRepository
 from app.repositories.sensor_repository import SensorRepository
+from app.repositories.workspace_repository import WorkspaceRepository
 from app.services.event_service import EventService
 from app.detection.flow_aggregator import FlowAggregator
 from app.schemas.sensor import (
@@ -50,14 +52,25 @@ def authenticate_sensor(
 @router.post("/enroll", response_model=SensorEnrollResponse, status_code=status.HTTP_201_CREATED)
 def enroll_sensor(
     req: SensorEnrollRequest,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_authenticated_user),
     db: Database = Depends(get_db),
 ):
     """
-    Enrolls a new genuine network sensor.
+    Enrolls a new genuine network sensor into the caller's verified workspace.
     Generates a secure API key returned once to the caller.
     """
     sensor_repo = SensorRepository(db)
+    ws_repo = WorkspaceRepository(db)
+    user_repo = UserRepository(db)
+
+    ws = None
+    if current_user.default_workspace_id:
+        ws = ws_repo.get_by_id(current_user.default_workspace_id)
+    if not ws:
+        ws = ws_repo.get_or_create_default_workspace(current_user.id, current_user.username)
+        current_user.default_workspace_id = ws.id
+        user_repo.update(current_user)
+
     existing = sensor_repo.get_by_id(req.sensor_id)
     if existing and existing.status == "active":
         raise HTTPException(
@@ -75,6 +88,8 @@ def enroll_sensor(
         hostname=req.hostname,
         collector_types=req.collector_types,
         status="active",
+        workspace_id=ws.id,
+        owner_user_id=current_user.id,
         enrolled_by=current_user.username,
         created_at=datetime.now(timezone.utc),
     )
@@ -94,13 +109,22 @@ def list_sensors(
     current_user: User = Depends(require_authenticated_user),
     db: Database = Depends(get_db),
 ):
-    """Lists all enrolled sensors and their operational heartbeat statuses."""
+    """Lists enrolled sensors scoped to the caller's workspace (or all for admin)."""
     sensor_repo = SensorRepository(db)
     sensors = sensor_repo.list_sensors()
     now = datetime.now(timezone.utc)
 
+    # Multi-tenant workspace filtering
+    is_admin = current_user.role.lower() in ("admin", "administrator")
+    user_ws = current_user.default_workspace_id
+
     items: List[SensorListItem] = []
     for s in sensors:
+        # If not admin, restrict to caller's workspace or enrollment
+        if not is_admin:
+            if s.workspace_id and s.workspace_id != user_ws and s.owner_user_id != current_user.id:
+                continue
+
         is_alive = False
         if s.last_heartbeat_at:
             delta = (now - s.last_heartbeat_at.replace(tzinfo=timezone.utc)).total_seconds()
@@ -129,17 +153,27 @@ def list_sensors(
 @router.post("/{sensor_id}/revoke", response_model=SensorRevokeResponse)
 def revoke_sensor(
     sensor_id: str,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_authenticated_user),
     db: Database = Depends(get_db),
 ):
-    """Revokes an enrolled sensor immediately, cutting off ingest access."""
+    """Revokes an enrolled sensor immediately. Authorized for sensor owner or administrator."""
     sensor_repo = SensorRepository(db)
-    success = sensor_repo.revoke(sensor_id, revoked_by=current_user.username)
-    if not success:
+    sensor = sensor_repo.get_by_id(sensor_id)
+    if not sensor:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Sensor '{sensor_id}' not found.",
         )
+
+    is_admin = current_user.role.lower() in ("admin", "administrator")
+    is_owner = (sensor.owner_user_id == current_user.id) or (sensor.enrolled_by == current_user.username)
+    if not is_admin and not is_owner:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to revoke sensors in another workspace.",
+        )
+
+    sensor_repo.revoke(sensor_id, revoked_by=current_user.username)
     return SensorRevokeResponse(
         sensor_id=sensor_id,
         status="revoked",
@@ -200,6 +234,10 @@ def ingest_telemetry_batch(
                 normalized = FlowAggregator.parse_suricata_eve(raw_event, sensor_id=sensor.sensor_id)
             else:
                 normalized = FlowAggregator.parse_windows_socket(raw_event, sensor_id=sensor.sensor_id)
+
+            # Strictly bind to sensor's verified workspace and owner in DB, never trusting client payload
+            normalized["workspace_id"] = sensor.workspace_id
+            normalized["owner_user_id"] = sensor.owner_user_id
 
             prev_alert_count = db.alerts.count_documents({})
             saved = event_service.ingest_event(normalized, run_detection=True)

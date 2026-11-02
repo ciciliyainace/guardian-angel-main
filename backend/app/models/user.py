@@ -24,10 +24,11 @@ class User:
         first_login_email_sent_at: Optional[datetime] = None,
         failed_login_attempts: int = 0,
         lockout_until: Optional[datetime] = None,
+        default_workspace_id: Optional[str] = None,
         _id: Optional[Any] = None,
         **kwargs,
     ):
-        self.id = id or 1
+        self.id = id
         self.email = email.lower() if email else ""
         self.username = username
         self.display_name = display_name or username
@@ -47,6 +48,7 @@ class User:
         self.first_login_email_sent_at = first_login_email_sent_at
         self.failed_login_attempts = failed_login_attempts
         self.lockout_until = lockout_until
+        self.default_workspace_id = default_workspace_id
         self._id = _id
 
     def to_doc(self) -> Dict[str, Any]:
@@ -63,6 +65,7 @@ class User:
             "auth_providers": self.auth_providers,
             "google_sub": self.google_sub,
             "email_verified": self.email_verified,
+            "default_workspace_id": self.default_workspace_id,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "first_login_at": self.first_login_at,
@@ -100,10 +103,7 @@ class User:
             except Exception:
                 last_login = None
 
-        # Determine email verification: existing admins/analysts or explicitly verified
-        is_verified = doc.get("email_verified", False)
-        if doc.get("role") in ("admin", "administrator"):
-            is_verified = doc.get("email_verified", True)
+        is_verified = bool(doc.get("email_verified", False))
 
         return cls(
             id=doc.get("id"),
@@ -117,6 +117,7 @@ class User:
             auth_providers=doc.get("auth_providers", ["password"]),
             google_sub=doc.get("google_sub"),
             email_verified=is_verified,
+            default_workspace_id=doc.get("default_workspace_id"),
             created_at=created,
             updated_at=doc.get("updated_at"),
             first_login_at=first_login,
@@ -138,6 +139,7 @@ class User:
             "role": self.role,
             "isActive": self.is_active,
             "emailVerified": self.email_verified,
+            "defaultWorkspaceId": self.default_workspace_id,
             "authProviders": self.auth_providers,
             "firstLoginAt": self.first_login_at.isoformat() if self.first_login_at else None,
             "lastLoginAt": self.last_login_at.isoformat() if self.last_login_at else None,

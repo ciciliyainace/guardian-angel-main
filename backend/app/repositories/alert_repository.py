@@ -24,10 +24,14 @@ class AlertRepository:
         severity: Optional[str] = None,
         category: Optional[str] = None,
         origin: Optional[str] = None,
+        workspace_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[Alert], int, int, int]:
         q: Dict[str, Any] = {}
+
+        if workspace_id:
+            q["workspace_id"] = workspace_id
 
         if status and status != "all":
             q["status"] = status.lower()
@@ -53,12 +57,29 @@ class AlertRepository:
         items = [Alert.from_doc(doc) for doc in cursor if doc]
         return items, total_count, total_pages, page
 
-    def count_by_status(self) -> dict:
-        total = self.collection.count_documents({})
-        active = self.collection.count_documents({"status": {"$ne": "resolved"}})
-        critical = self.collection.count_documents({"severity": "critical"})
-        high = self.collection.count_documents({"severity": "high"})
-        resolved = self.collection.count_documents({"status": "resolved"})
+    def count_by_status(self, workspace_id: Optional[str] = None) -> dict:
+        q: Dict[str, Any] = {}
+        if workspace_id:
+            q["workspace_id"] = workspace_id
+
+        total = self.collection.count_documents(q)
+
+        active_q = dict(q)
+        active_q["status"] = {"$ne": "resolved"}
+        active = self.collection.count_documents(active_q)
+
+        crit_q = dict(q)
+        crit_q["severity"] = "critical"
+        critical = self.collection.count_documents(crit_q)
+
+        high_q = dict(q)
+        high_q["severity"] = "high"
+        high = self.collection.count_documents(high_q)
+
+        res_q = dict(q)
+        res_q["status"] = "resolved"
+        resolved = self.collection.count_documents(res_q)
+
         return {
             "total_alerts": total,
             "active_alerts": active,

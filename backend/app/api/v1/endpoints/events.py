@@ -5,6 +5,8 @@ from app.core.database import get_db
 from app.services.event_service import EventService
 from app.schemas.event import EventResponse, EventCreate
 from app.schemas.common import PaginatedResponse
+from app.api.dependencies import get_current_user
+from app.models.user import User
 
 router = APIRouter()
 
@@ -22,12 +24,18 @@ def get_events(
     sort_by: str = Query("timestamp", alias="sortBy"),
     sort_dir: str = Query("desc", alias="sortDir"),
     paginated: bool = Query(False, description="Set true to return paginated wrapper"),
+    current_user: Optional[User] = Depends(get_current_user),
     db: Database = Depends(get_db),
 ) -> Any:
     range_hours = None
     if range:
         range_map = {"1h": 1, "6h": 6, "24h": 24}
         range_hours = range_map.get(range)
+
+    # Scoped workspace resolution
+    workspace_id = None
+    if current_user and current_user.role.lower() not in ("admin", "administrator"):
+        workspace_id = current_user.default_workspace_id
 
     service = EventService(db)
     items, total, p, pages = service.filter_events(
@@ -37,6 +45,7 @@ def get_events(
         status=status,
         range_hours=range_hours,
         origin=origin,
+        workspace_id=workspace_id,
         page=page,
         page_size=page_size,
         sort_by=sort_by,

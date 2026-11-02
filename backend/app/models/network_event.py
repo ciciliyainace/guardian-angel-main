@@ -25,6 +25,8 @@ class NetworkEvent:
         is_simulated: bool = False,
         sensor_id: Optional[str] = None,
         data_origin: Optional[str] = None,
+        workspace_id: Optional[str] = None,
+        owner_user_id: Optional[int] = None,
         created_at: Optional[datetime] = None,
         _id: Optional[Any] = None,
         **kwargs,
@@ -47,6 +49,8 @@ class NetworkEvent:
         self.collector_metadata = collector_metadata or {}
         self.ingestion_status = ingestion_status
         self.sensor_id = sensor_id
+        self.workspace_id = workspace_id
+        self.owner_user_id = owner_user_id
         
         sim = is_simulated or ("SIM-" in str(id)) or (data_origin == "simulated")
         self.is_simulated = sim
@@ -76,6 +80,8 @@ class NetworkEvent:
             "is_simulated": self.is_simulated,
             "data_origin": self.data_origin,
             "sensor_id": self.sensor_id,
+            "workspace_id": self.workspace_id,
+            "owner_user_id": self.owner_user_id,
             "created_at": self.created_at,
         }
 
@@ -104,6 +110,8 @@ class NetworkEvent:
             is_simulated=doc.get("is_simulated", False),
             data_origin=doc.get("data_origin"),
             sensor_id=doc.get("sensor_id"),
+            workspace_id=doc.get("workspace_id"),
+            owner_user_id=doc.get("owner_user_id"),
             created_at=doc.get("created_at"),
             _id=doc.get("_id"),
         )
@@ -126,5 +134,6 @@ class NetworkEvent:
             "isSimulated": self.is_simulated,
             "dataOrigin": self.data_origin,
             "sensorId": self.sensor_id,
+            "workspaceId": self.workspace_id,
             "eventSource": self.event_source,
         }

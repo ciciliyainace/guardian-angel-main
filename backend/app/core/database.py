@@ -193,6 +193,12 @@ def init_indexes(db: Database):
         db.users.create_index("email", unique=True)
         db.users.create_index("id", unique=True)
         db.users.create_index("google_sub", sparse=True)
+        db.users.create_index("default_workspace_id")
+
+        # 1a. workspaces (Multi-tenant SaaS isolation)
+        db.workspaces.create_index("id", unique=True)
+        db.workspaces.create_index("owner_user_id")
+        db.workspaces.create_index("members.user_id")
 
         # 1b. auth_tokens (Single-use hashed tokens with TTL expiry)
         db.auth_tokens.create_index("token_hash", unique=True)
@@ -203,9 +209,15 @@ def init_indexes(db: Database):
         db.login_attempts.create_index("key", unique=True)
         db.login_attempts.create_index([("expires_at", 1)], expireAfterSeconds=0)
 
+        # 1d. email_delivery_logs (Email delivery audit trail)
+        db.email_delivery_logs.create_index([("workspace_id", 1), ("attempted_at", -1)])
+        db.email_delivery_logs.create_index([("user_id", 1), ("attempted_at", -1)])
+
         # 2. network_events
         db.network_events.create_index("id", unique=True)
         db.network_events.create_index([("timestamp", -1)])
+        db.network_events.create_index([("workspace_id", 1), ("timestamp", -1)])
+        db.network_events.create_index([("workspace_id", 1), ("severity", 1), ("timestamp", -1)])
         db.network_events.create_index("category")
         db.network_events.create_index([("severity", 1), ("timestamp", -1)])
         db.network_events.create_index([("source_ip", 1), ("dest_ip", 1)])
@@ -217,6 +229,8 @@ def init_indexes(db: Database):
         # 3. alerts
         db.alerts.create_index("id", unique=True)
         db.alerts.create_index([("timestamp", -1)])
+        db.alerts.create_index([("workspace_id", 1), ("timestamp", -1)])
+        db.alerts.create_index([("workspace_id", 1), ("status", 1)])
         db.alerts.create_index([("status", 1), ("severity", 1)])
         db.alerts.create_index("related_event_id")
         db.alerts.create_index("data_origin")
@@ -226,6 +240,8 @@ def init_indexes(db: Database):
         db.sensors.create_index("sensor_id", unique=True)
         db.sensors.create_index("api_key_hash", unique=True)
         db.sensors.create_index("status")
+        db.sensors.create_index([("workspace_id", 1), ("sensor_id", 1)])
+        db.sensors.create_index("owner_user_id")
         db.sensor_heartbeats.create_index([("sensor_id", 1), ("timestamp", -1)])
 
         # 4. detection_rules

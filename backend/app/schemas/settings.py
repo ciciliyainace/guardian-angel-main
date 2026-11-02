@@ -20,8 +20,13 @@ class ProfileResponse(BaseSchema):
     id: int
     email: str
     username: str
-    displayName: str = Field(..., alias="display_name", serialization_alias="displayName")
+    displayName: str = Field(..., alias="display_name")
     role: str
+    email_verified: bool = Field(False, alias="emailVerified")
+    auth_providers: list[str] = Field(default_factory=lambda: ["password"], alias="authProviders")
+    default_workspace_id: Optional[str] = Field(None, alias="defaultWorkspaceId")
+    workspace_name: Optional[str] = Field(None, alias="workspaceName")
+    last_login_at: Optional[str] = Field(None, alias="lastLoginAt")
 
 
 class ProfileUpdate(BaseSchema):

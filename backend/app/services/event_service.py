@@ -100,6 +100,9 @@ class EventService:
         if not data_origin:
             data_origin = "simulated" if is_simulated else "live"
 
+        workspace_id = event_dict.get("workspace_id") or event_dict.get("workspaceId")
+        owner_user_id = event_dict.get("owner_user_id") or event_dict.get("ownerUserId")
+
         event = NetworkEvent(
             id=event_id,
             timestamp=now_ms,
@@ -120,6 +123,8 @@ class EventService:
             ingestion_status="processed",
             is_simulated=is_simulated,
             sensor_id=sensor_id,
+            workspace_id=workspace_id,
+            owner_user_id=owner_user_id,
             data_origin=data_origin,
         )
         saved_event = self.event_repo.create(event)
@@ -141,6 +146,8 @@ class EventService:
                 model_versions=detection_result["model_versions"] if detection_result else {},
                 rule_ids=detection_result["rule_ids"] if detection_result else [],
                 sensor_id=sensor_id,
+                workspace_id=saved_event.workspace_id,
+                owner_user_id=saved_event.owner_user_id,
                 data_origin=data_origin,
                 recommendation=recommendation,
             )
@@ -169,6 +176,7 @@ class EventService:
         status: Optional[str] = None,
         range_hours: Optional[int] = None,
         origin: Optional[str] = None,
+        workspace_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
         sort_by: str = "timestamp",
@@ -181,6 +189,7 @@ class EventService:
             status=status,
             range_hours=range_hours,
             origin=origin,
+            workspace_id=workspace_id,
             page=page,
             page_size=page_size,
             sort_by=sort_by,

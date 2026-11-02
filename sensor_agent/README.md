@@ -54,3 +54,4 @@ This generates `sensor_config.json` containing your unique sensor ID and `sen_li
 python sensor_agent.py
 ```
 Or double-click `run_sensor.bat`.
+

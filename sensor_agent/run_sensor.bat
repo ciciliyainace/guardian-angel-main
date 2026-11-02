@@ -19,3 +19,4 @@ if not exist sensor_config.json (
 echo [*] Starting live sensor agent...
 python sensor_agent.py
 pause
+

@@ -17,6 +17,8 @@ class Sensor:
         collector_types: Optional[List[str]] = None,
         status: str = "active",
         enrolled_by: str = "admin",
+        workspace_id: Optional[str] = None,
+        owner_user_id: Optional[int] = None,
         created_at: Optional[datetime] = None,
         revoked_at: Optional[datetime] = None,
         revoked_by: Optional[str] = None,
@@ -35,6 +37,8 @@ class Sensor:
         self.collector_types = collector_types or ["windows_sockets"]
         self.status = status
         self.enrolled_by = enrolled_by
+        self.workspace_id = workspace_id
+        self.owner_user_id = owner_user_id
         self.created_at = created_at or datetime.now(timezone.utc)
         self.revoked_at = revoked_at
         self.revoked_by = revoked_by
@@ -54,6 +58,8 @@ class Sensor:
             "collector_types": self.collector_types,
             "status": self.status,
             "enrolled_by": self.enrolled_by,
+            "workspace_id": self.workspace_id,
+            "owner_user_id": self.owner_user_id,
             "created_at": self.created_at,
             "revoked_at": self.revoked_at,
             "revoked_by": self.revoked_by,
@@ -76,6 +82,8 @@ class Sensor:
             collector_types=doc.get("collector_types") or [],
             status=doc.get("status", "active"),
             enrolled_by=doc.get("enrolled_by", "admin"),
+            workspace_id=doc.get("workspace_id"),
+            owner_user_id=doc.get("owner_user_id"),
             created_at=doc.get("created_at"),
             revoked_at=doc.get("revoked_at"),
             revoked_by=doc.get("revoked_by"),
@@ -95,6 +103,8 @@ class Sensor:
             "collectorTypes": self.collector_types,
             "status": self.status,
             "enrolledBy": self.enrolled_by,
+            "workspaceId": self.workspace_id,
+            "ownerUserId": self.owner_user_id,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "lastHeartbeatAt": self.last_heartbeat_at.isoformat() if self.last_heartbeat_at else None,
             "lastTelemetryAt": self.last_telemetry_at.isoformat() if self.last_telemetry_at else None,

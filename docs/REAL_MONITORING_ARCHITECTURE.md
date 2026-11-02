@@ -95,3 +95,4 @@ Machine learning models trained on benchmark datasets (such as CICIDS2017) rely 
    - `FIREWALL_MODE=simulation` and `ALLOW_FIREWALL_BLOCKING=false` remain strictly enforced.
    - All high-severity alerts generate block proposals in the firewall queue.
    - No destructive firewall commands are executed on the host.
+

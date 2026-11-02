@@ -90,3 +90,4 @@ Sample Stored Document:
    - Switch between `15m`, `1h`, `24h`, and `7d` to verify time-sliced queries.
 4. Switch to `Simulation Mode`:
    - Visualizes synthetic benchmark scenarios with clear amber tags without polluting live database statistics.
+

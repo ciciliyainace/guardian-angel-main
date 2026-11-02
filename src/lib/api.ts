@@ -153,17 +153,38 @@ export const api = {
     }
   },
 
-  getProfile: () =>
-    request("/auth/me", () => ({
-      id: 1,
-      email: "analyst@sentinelai.local",
-      username: "ciciliya-inace",
-      displayName: "Ciciliya Inace",
-      role: "analyst",
-      is_active: true,
-      email_verified: true,
-      auth_providers: ["password"],
-    })),
+  getProfile: async () => {
+    const token = getAuthToken();
+    if (!token) return null;
+    try {
+      const res = await fetch(`${API_BASE_URL}/profile`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearAuthToken();
+        }
+        return null;
+      }
+      return (await res.json());
+    } catch {
+      return null;
+    }
+  },
+
+  sensors: () => request<any[]>("/sensors", () => []),
+  enrollSensor: (data: { sensor_id: string; name: string; hostname?: string; collector_types: string[] }) =>
+    request<any>("/sensors/enroll", () => ({}), {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  revokeSensor: (sensorId: string) =>
+    request<any>(`/sensors/${sensorId}/revoke`, () => ({}), {
+      method: "POST",
+    }),
 
   // Events & Traffic
   events: () => request<SecurityEvent[]>("/events", () => mock.events),

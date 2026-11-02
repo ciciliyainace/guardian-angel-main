@@ -20,6 +20,8 @@ class Alert:
         sensor_id: Optional[str] = None,
         data_origin: Optional[str] = None,
         recommendation: Optional[str] = None,
+        workspace_id: Optional[str] = None,
+        owner_user_id: Optional[int] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
         _id: Optional[Any] = None,
@@ -38,6 +40,8 @@ class Alert:
         self.model_versions = model_versions or {}
         self.rule_ids = rule_ids or []
         self.sensor_id = sensor_id
+        self.workspace_id = workspace_id
+        self.owner_user_id = owner_user_id
         self.data_origin = data_origin if data_origin in ("live", "simulated") else ("simulated" if "SIM-" in str(id) else "live")
         self.recommendation = recommendation
         self.created_at = created_at or datetime.now(timezone.utc)
@@ -59,6 +63,8 @@ class Alert:
             "model_versions": self.model_versions,
             "rule_ids": self.rule_ids,
             "sensor_id": self.sensor_id,
+            "workspace_id": self.workspace_id,
+            "owner_user_id": self.owner_user_id,
             "data_origin": self.data_origin,
             "recommendation": self.recommendation,
             "created_at": self.created_at,
@@ -83,6 +89,8 @@ class Alert:
             model_versions=doc.get("model_versions") or {},
             rule_ids=doc.get("rule_ids") or [],
             sensor_id=doc.get("sensor_id"),
+            workspace_id=doc.get("workspace_id"),
+            owner_user_id=doc.get("owner_user_id"),
             data_origin=doc.get("data_origin"),
             recommendation=doc.get("recommendation"),
             created_at=doc.get("created_at"),
@@ -104,5 +112,7 @@ class Alert:
             "notes": self.notes or "",
             "modelVersions": self.model_versions or {},
             "ruleIds": self.rule_ids or [],
+            "sensorId": self.sensor_id,
+            "workspaceId": self.workspace_id,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
         }

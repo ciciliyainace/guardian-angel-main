@@ -28,7 +28,6 @@ def test_get_current_user_authenticated(client, admin_headers):
 
 def test_get_current_user_unauthenticated(client):
     res = client.get("/api/v1/auth/me")
-    assert res.status_code == 200
+    assert res.status_code == 401
     data = res.json()
-    # Returns default demo profile
-    assert data["username"] == "ciciliya-inace"
+    assert "Authentication required" in data["detail"]

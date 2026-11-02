@@ -6,10 +6,12 @@ from typing import Optional, Dict, Any
 from app.core.config import settings
 from app.core.logging_config import logger
 from app.models.user import User
+from app.models.email_delivery_log import EmailDeliveryLog
+from app.repositories.email_delivery_repository import EmailDeliveryRepository
 
 
 class EmailService:
-    def __init__(self):
+    def __init__(self, db: Optional[Any] = None):
         self.smtp_host = settings.SMTP_HOST
         self.smtp_port = settings.SMTP_PORT
         self.smtp_username = settings.SMTP_USERNAME
@@ -19,6 +21,8 @@ class EmailService:
         self.from_email = settings.MAIL_FROM_EMAIL
         self.from_name = settings.MAIL_FROM_NAME
         self.frontend_base_url = settings.FRONTEND_BASE_URL.rstrip("/")
+        self.db = db
+        self.delivery_repo = EmailDeliveryRepository(db) if db is not None else None
 
     def is_configured(self) -> bool:
         """Check if SMTP credentials are fully configured."""
@@ -221,6 +225,9 @@ SentinelAI administrators will never ask for your password. If you did not creat
             subject="Welcome to SentinelAI — Account Created",
             html_content=self._render_base_template("Welcome to SentinelAI", "Account Successfully Provisioned", content_html),
             text_content=text_content,
+            user_id=user.id,
+            workspace_id=user.default_workspace_id,
+            notification_type="welcome",
         )
 
     def send_first_login_email(self, user: User, login_time_utc: datetime, ip_address: Optional[str] = None) -> Dict[str, Any]:
@@ -271,6 +278,9 @@ If you did not perform this login, contact your security administrator immediate
             subject="SentinelAI — First Successful Login Notification",
             html_content=self._render_base_template("First Login Detected", "Security Notification", content_html),
             text_content=text_content,
+            user_id=user.id,
+            workspace_id=user.default_workspace_id,
+            notification_type="first_login",
         )
 
     def send_password_reset_email(self, user: User, reset_token: str) -> Dict[str, Any]:
@@ -316,6 +326,9 @@ If you did not request this, please ignore this email.
             subject="SentinelAI — Password Reset Instructions",
             html_content=self._render_base_template("Password Reset Request", "Security Authentication Verification", content_html),
             text_content=text_content,
+            user_id=user.id,
+            workspace_id=user.default_workspace_id,
+            notification_type="password_reset",
         )
 
     def send_verification_email(self, user: User, verification_token: str) -> Dict[str, Any]:
@@ -355,17 +368,48 @@ This link expires in {expire_hours} hours.
             subject="SentinelAI — Verify Your Email Address",
             html_content=self._render_base_template("Verify Email Address", "Identity Confirmation", content_html),
             text_content=text_content,
+            user_id=user.id,
+            workspace_id=user.default_workspace_id,
+            notification_type="email_verification",
         )
 
-    def _send_email(self, to_email: str, subject: str, html_content: str, text_content: str) -> Dict[str, Any]:
+    def _send_email(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: str,
+        user_id: Optional[int] = None,
+        workspace_id: Optional[str] = None,
+        notification_type: str = "generic",
+    ) -> Dict[str, Any]:
         """
         Internal delivery method. If SMTP is unconfigured, logs and returns 'awaiting_configuration'.
         If configured, connects to SMTP server with TLS and dispatches the email.
+        Logs every attempt in email_delivery_logs collection.
         """
+        def record_audit(status: str, error_msg: Optional[str] = None):
+            try:
+                if self.delivery_repo:
+                    log_entry = EmailDeliveryLog(
+                        user_id=user_id,
+                        workspace_id=workspace_id,
+                        recipient_email=to_email,
+                        notification_type=notification_type,
+                        provider="smtp",
+                        status=status,
+                        error_message=error_msg,
+                        attempted_at=datetime.now(timezone.utc),
+                    )
+                    self.delivery_repo.record_delivery(log_entry)
+            except Exception as audit_err:
+                logger.warning(f"[EmailService] Failed to record email audit log: {audit_err}")
+
         if not self.is_configured():
             logger.info(
                 f"[EmailService] SMTP unconfigured. Email '{subject}' to <{to_email}> queued as awaiting_configuration."
             )
+            record_audit("awaiting_configuration", "SMTP unconfigured in environment")
             return {
                 "status": "awaiting_configuration",
                 "message": "Email delivery service is awaiting SMTP credentials in backend/.env",
@@ -397,6 +441,7 @@ This link expires in {expire_hours} hours.
             server.quit()
 
             logger.info(f"[EmailService] Successfully delivered '{subject}' to <{to_email}>.")
+            record_audit("delivered")
             return {
                 "status": "delivered",
                 "message": "Email dispatched successfully",
@@ -405,6 +450,7 @@ This link expires in {expire_hours} hours.
             }
         except Exception as e:
             logger.error(f"[EmailService] Failed to send email to <{to_email}>: {e}", exc_info=False)
+            record_audit("failed", str(e))
             return {
                 "status": "failed",
                 "message": f"SMTP delivery failed: {str(e)}",

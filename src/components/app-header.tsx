@@ -48,13 +48,13 @@ export function AppHeader() {
     };
   }, []);
 
-  const displayName = user?.display_name || user?.username || "Ciciliya Inace";
+  const displayName = user?.display_name || user?.username || "Analyst";
   const initials = displayName
     .split(" ")
     .map((p) => p[0])
     .join("")
     .slice(0, 2)
-    .toUpperCase() || "CI";
+    .toUpperCase() || "SA";
   const roleTitle = user?.role?.toLowerCase() === "administrator" ? "Administrator" : "SOC Analyst";
 
   const handleSignOut = async () => {
@@ -172,7 +172,7 @@ export function AppHeader() {
                 )}
               </div>
               <div className="truncate text-xs font-normal text-muted-foreground">
-                {roleTitle} · {user?.email || "analyst@sentinelai.local"}
+                {roleTitle} · {user?.email || "No email"}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

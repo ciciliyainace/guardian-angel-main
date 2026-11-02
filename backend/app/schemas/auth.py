@@ -42,6 +42,8 @@ class UserResponse(BaseSchema):
     role: str
     is_active: bool
     email_verified: bool = False
+    default_workspace_id: Optional[str] = None
+    workspace_name: Optional[str] = None
     auth_providers: List[str] = ["password"]
     created_at: Optional[Any] = None
     first_login_at: Optional[Any] = None
