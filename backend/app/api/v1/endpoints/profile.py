@@ -2,12 +2,15 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from pymongo.database import Database
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.security import verify_password, hash_password
 from app.schemas.settings import ProfileResponse, ProfileUpdate
 from app.api.dependencies import require_authenticated_user
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.repositories.workspace_repository import WorkspaceRepository
+from app.repositories.token_repository import TokenRepository
+from app.services.email_service import EmailService
 
 router = APIRouter()
 
@@ -50,10 +53,20 @@ def update_profile(
     user_repo = UserRepository(db)
     ws_repo = WorkspaceRepository(db)
 
+    email_changed = False
     if payload.displayName:
-        current_user.display_name = payload.displayName
-    if payload.email:
-        current_user.email = payload.email
+        current_user.display_name = payload.displayName.strip()
+    if payload.email and payload.email.strip().lower() != current_user.email.lower():
+        clean_email = payload.email.strip().lower()
+        existing = user_repo.get_by_email(clean_email)
+        if existing and existing.id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email address is already registered to another account.",
+            )
+        current_user.email = clean_email
+        current_user.email_verified = False
+        email_changed = True
 
     if payload.newPassword:
         if not payload.currentPassword or not verify_password(payload.currentPassword, current_user.hashed_password):
@@ -63,8 +76,18 @@ def update_profile(
             )
         current_user.hashed_password = hash_password(payload.newPassword)
 
-    repo = UserRepository(db)
-    repo.update(current_user)
+    user_repo.update(current_user)
+
+    if email_changed:
+        token_repo = TokenRepository(db)
+        verification_token = token_repo.create_token(
+            user_id=current_user.id,
+            email=current_user.email,
+            token_type="email_verification",
+            expires_in_minutes=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS * 60,
+        )
+        EmailService(db).send_verification_email(current_user, verification_token)
+
     ws = ws_repo.get_by_id(current_user.default_workspace_id) if current_user.default_workspace_id else None
     return {
         "id": current_user.id,

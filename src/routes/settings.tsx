@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Loader2, Plus, ShieldCheck, Cpu } from "lucide-react";
+import { Loader2, Plus, ShieldCheck, Cpu, Edit3, Save, X, AlertTriangle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,7 @@ function Settings() {
   const { tab = "profile" } = Route.useSearch();
   const navigate = useNavigate({ from: "/settings" });
   const { theme, setTheme } = useTheme();
-  const { user, resendVerification, logout } = useAuth();
+  const { user, resendVerification, logout, refreshUser } = useAuth();
 
   // Profile State
   const [profile, setProfile] = useState<{
@@ -51,6 +51,10 @@ function Settings() {
   });
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
 
   // Sensors State
   const [sensorsList, setSensorsList] = useState<any[]>([]);
@@ -184,6 +188,39 @@ function Settings() {
     }
   };
 
+  const handleStartEdit = () => {
+    setEditDisplayName(profile.displayName || profile.username || "");
+    setEditEmail(profile.email || "");
+    setIsEditingProfile(true);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editEmail.trim()) {
+      toast.error("Email address cannot be empty.");
+      return;
+    }
+    try {
+      setSavingProfile(true);
+      const updated = await api.updateProfile({
+        displayName: editDisplayName.trim(),
+        email: editEmail.trim().toLowerCase(),
+      });
+      setProfile(updated);
+      setIsEditingProfile(false);
+      await refreshUser();
+      toast.success("Profile Updated", {
+        description: `Your profile has been saved. ${updated.email !== profile.email ? "A verification link has been dispatched to " + updated.email : ""}`,
+      });
+    } catch (err: any) {
+      toast.error("Update Failed", {
+        description: err?.message || "Failed to update profile.",
+      });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader title="Settings" description={D} />
@@ -198,13 +235,79 @@ function Settings() {
 
         {/* Profile Tab */}
         <TabsContent value="profile">
-          <Panel title="User Profile">
+          <Panel
+            title="User Profile"
+            actions={
+              !isEditingProfile && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleStartEdit}
+                  className="h-8 gap-1.5 text-xs"
+                >
+                  <Edit3 className="size-3.5" /> Edit Profile
+                </Button>
+              )
+            }
+          >
             {loadingProfile ? (
               <div className="flex h-20 items-center text-sm text-muted-foreground">
                 <Loader2 className="mr-2 size-4 animate-spin" /> Loading profile...
               </div>
+            ) : isEditingProfile ? (
+              <form onSubmit={handleSaveProfile} className="space-y-4 max-w-md">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">Display Name</label>
+                  <Input
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                    placeholder="Your Name"
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">Email Address</label>
+                  <Input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="you@domain.com"
+                    required
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Updating your email will set its status to unverified until confirmed via the link sent to your inbox.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <Button type="submit" size="sm" disabled={savingProfile} className="h-8 gap-1.5 text-xs">
+                    {savingProfile ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                    Save Changes
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingProfile(false)}
+                    disabled={savingProfile}
+                    className="h-8 gap-1 text-xs"
+                  >
+                    <X className="size-3.5" /> Cancel
+                  </Button>
+                </div>
+              </form>
             ) : (
-              <div className="space-y-3 text-sm">
+              <div className="space-y-3.5 text-sm">
+                {profile.email?.endsWith("@sentinelai.local") && (
+                  <div className="flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    <div>
+                      <strong>Placeholder Email Detected: </strong>
+                      Your account is currently using the seeded local address (<code>{profile.email}</code>).
+                      Click <strong>Edit Profile</strong> above to set your genuine email address so you can receive verification links and security alerts.
+                    </div>
+                  </div>
+                )}
                 <div>
                   <span className="font-medium text-foreground">Name: </span>
                   <span className="text-muted-foreground">{profile.displayName || profile.username}</span>

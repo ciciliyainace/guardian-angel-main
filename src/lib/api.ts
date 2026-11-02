@@ -3,7 +3,33 @@
 import * as mock from "./mock-data";
 import type { SecurityEvent, BlockRequest, DetectionRule, AlertStatus, Severity } from "./mock-data";
 
-export const API_BASE_URL = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "http://127.0.0.1:8000/api/v1";
+export const LIVE_RENDER_API = "https://guardian-angel-main-1.onrender.com/api/v1";
+
+export function resolveApiBaseUrl(): string {
+  const envUrl = (import.meta.env["VITE_API_BASE_URL"] as string | undefined)?.trim();
+  // 1. Explicit live environment variable
+  if (envUrl && !envUrl.includes("127.0.0.1") && !envUrl.includes("localhost")) {
+    return envUrl.replace(/\/+$/, "");
+  }
+
+  // 2. Browser runtime: if running on Vercel or any non-localhost domain, route to the live Render backend
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1" && host !== "::1") {
+      return LIVE_RENDER_API;
+    }
+  }
+
+  // 3. Production build
+  if (import.meta.env.PROD && (!envUrl || envUrl.includes("127.0.0.1") || envUrl.includes("localhost"))) {
+    return LIVE_RENDER_API;
+  }
+
+  // 4. Local development default
+  return envUrl || "http://127.0.0.1:8000/api/v1";
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 export const DEMO_MODE = false;
 
 const TOKEN_KEY = "sentinelai_access_token";
@@ -173,6 +199,24 @@ export const api = {
     } catch {
       return null;
     }
+  },
+
+  updateProfile: async (payload: { displayName?: string; email?: string; currentPassword?: string; newPassword?: string }) => {
+    const token = getAuthToken();
+    if (!token) throw new Error("Authentication required.");
+    const res = await fetch(`${API_BASE_URL}/profile`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.detail || "Failed to update profile.");
+    }
+    return res.json();
   },
 
   sensors: () => request<any[]>("/sensors", () => []),
