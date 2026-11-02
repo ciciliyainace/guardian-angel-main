@@ -171,7 +171,7 @@ function VerifyEmailPage() {
           <form onSubmit={handleResend} className="flex gap-2">
             <Input
               type="email"
-              placeholder="user@sentinelai.local"
+              placeholder="user@domain.com"
               value={resendEmail}
               onChange={(e) => setResendEmail(e.target.value)}
               className="text-xs flex-1"

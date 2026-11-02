@@ -202,7 +202,7 @@ function RegisterPage() {
               id="email"
               type="email"
               autoComplete="email"
-              placeholder="e.g. analyst@sentinelai.local"
+              placeholder="e.g. analyst@domain.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="pl-9 text-sm"

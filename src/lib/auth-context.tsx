@@ -84,16 +84,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     }
 
-    // Offline / Demo resilience: if token exists or local user exists, restore local session
+    // Validate and restore cached session from real backend tokens only
     if (currentToken && typeof window !== "undefined") {
+      // If the cached token was a synthetic offline demo token, discard it
+      if (currentToken.startsWith("demo_token_")) {
+        clearAuthToken();
+        localStorage.removeItem("sentinelai_demo_user");
+        setToken(null);
+        setUser(null);
+        return null;
+      }
+
       const savedUserStr = localStorage.getItem("sentinelai_demo_user");
       if (savedUserStr) {
         try {
           const savedUser = JSON.parse(savedUserStr) as AuthUser;
+          // Purge legacy placeholder accounts ending in @sentinelai.local
+          if (savedUser.email && savedUser.email.endsWith("@sentinelai.local")) {
+            clearAuthToken();
+            localStorage.removeItem("sentinelai_demo_user");
+            setToken(null);
+            setUser(null);
+            return null;
+          }
           setUser(savedUser);
           return savedUser;
         } catch {
-          // invalid cache
+          localStorage.removeItem("sentinelai_demo_user");
         }
       }
       return null;
@@ -130,35 +147,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("sentinelai_demo_user", JSON.stringify(data.user));
       }
       return data.user;
-    } catch (err) {
-      // If the backend threw a real API credential rejection, propagate it
-      if (err instanceof Error && !err.message.includes("Failed to fetch") && !err.message.includes("NetworkError")) {
-        throw err;
+    } catch (err: unknown) {
+      const e = err as Error;
+      if (e.message.includes("Failed to fetch") || e.message.toLowerCase().includes("networkerror")) {
+        throw new Error(
+          `Cannot connect to SentinelAI API at ${API_BASE_URL}. Please ensure your backend is online and VITE_API_BASE_URL is configured in your deployment settings.`
+        );
       }
-
-      // Backend unreachable / network error: activate offline analyst session
-      console.warn("[Auth] Backend unreachable, logging in with offline simulated analyst session:", err);
-      const isEmail = usernameOrEmail.includes("@");
-      const uname = isEmail ? usernameOrEmail.split("@")[0] : usernameOrEmail;
-      const demoUser: AuthUser = {
-        id: 1,
-        username: uname,
-        email: isEmail ? usernameOrEmail : `${uname}@sentinelai.local`,
-        display_name: uname,
-        role: "analyst",
-        is_active: true,
-        email_verified: true,
-        auth_providers: ["password"],
-        last_login_at: new Date().toISOString(),
-      };
-      const demoToken = `demo_token_${Date.now()}`;
-      setAuthToken(demoToken);
-      setToken(demoToken);
-      setUser(demoUser);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("sentinelai_demo_user", JSON.stringify(demoUser));
-      }
-      return demoUser;
+      throw err;
     }
   };
 
@@ -177,33 +173,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const userData = (await res.json()) as AuthUser;
       return userData;
-    } catch (err) {
-      // If backend actively rejected with validation message, propagate it
-      if (err instanceof Error && !err.message.includes("Failed to fetch") && !err.message.includes("NetworkError")) {
-        throw err;
+    } catch (err: unknown) {
+      const e = err as Error;
+      if (e.message.includes("Failed to fetch") || e.message.toLowerCase().includes("networkerror")) {
+        throw new Error(
+          `Cannot connect to SentinelAI API at ${API_BASE_URL}. Please ensure your backend is online and VITE_API_BASE_URL is configured in your deployment settings.`
+        );
       }
-
-      // Backend unreachable / mixed content: provision offline analyst session
-      console.warn("[Auth] Backend unreachable, creating offline simulated analyst account:", err);
-      const demoUser: AuthUser = {
-        id: Date.now(),
-        username: payload.username.trim(),
-        email: payload.email.trim(),
-        display_name: payload.display_name || payload.username.trim(),
-        role: "analyst",
-        is_active: true,
-        email_verified: true,
-        auth_providers: ["password"],
-        created_at: new Date().toISOString(),
-      };
-      const demoToken = `demo_token_${Date.now()}`;
-      setAuthToken(demoToken);
-      setToken(demoToken);
-      setUser(demoUser);
-      if (typeof window !== "undefined") {
-        localStorage.setItem("sentinelai_demo_user", JSON.stringify(demoUser));
-      }
-      return demoUser;
+      throw err;
     }
   };
 
