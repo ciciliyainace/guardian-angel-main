@@ -172,19 +172,44 @@ function Settings() {
     }
   };
 
+  const [instantVerifying, setInstantVerifying] = useState(false);
+
   const handleResendVerification = async () => {
     const targetEmail = profile.email || user?.email;
     if (!targetEmail) return;
     setResendingVerification(true);
     try {
       const data = await resendVerification(targetEmail);
-      toast.info("Verification Request Dispatched", {
-        description: data.message || "A verification link has been sent to your email.",
-      });
+      if (data.email_status === "awaiting_configuration") {
+        toast.warning("SMTP Not Configured on Render", {
+          description: "Your Render backend does not have SMTP credentials configured. Click 'Verify Now' to verify immediately, or configure SMTP in Render Dashboard.",
+          duration: 9000,
+        });
+      } else {
+        toast.info("Verification Request Dispatched", {
+          description: data.message || "A verification link has been sent to your email.",
+        });
+      }
     } catch (err: any) {
       toast.error(err?.message || "Failed to resend verification email.");
     } finally {
       setResendingVerification(false);
+    }
+  };
+
+  const handleInstantVerify = async () => {
+    try {
+      setInstantVerifying(true);
+      await api.verifyMe();
+      setProfile((prev) => ({ ...prev, email_verified: true }));
+      await refreshUser();
+      toast.success("Email Verified", {
+        description: "Your email address has been verified successfully.",
+      });
+    } catch (err: any) {
+      toast.error(err?.message || "Verification failed.");
+    } finally {
+      setInstantVerifying(false);
     }
   };
 
@@ -324,7 +349,7 @@ function Settings() {
                       ✓ Verified
                     </span>
                   ) : (
-                    <span className="ml-2 inline-flex items-center gap-1.5">
+                    <span className="ml-2 inline-flex items-center gap-2 flex-wrap">
                       <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
                         ⚠ Unverified
                       </span>
@@ -336,6 +361,15 @@ function Settings() {
                         className="h-auto p-0 text-xs text-primary underline"
                       >
                         {resendingVerification ? "Sending..." : "Resend Link"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleInstantVerify}
+                        disabled={instantVerifying}
+                        className="h-6 px-2 text-[11px] font-medium border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                      >
+                        {instantVerifying ? "Verifying..." : "Verify Now"}
                       </Button>
                     </span>
                   )}

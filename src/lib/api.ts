@@ -219,6 +219,23 @@ export const api = {
     return res.json();
   },
 
+  verifyMe: async () => {
+    const token = getAuthToken();
+    if (!token) throw new Error("Authentication required.");
+    const res = await fetch(`${API_BASE_URL}/auth/verify-me`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.detail || "Failed to verify email.");
+    }
+    return res.json();
+  },
+
   sensors: () => request<any[]>("/sensors", () => []),
   enrollSensor: (data: { sensor_id: string; name: string; hostname?: string; collector_types: string[] }) =>
     request<any>("/sensors/enroll", () => ({}), {

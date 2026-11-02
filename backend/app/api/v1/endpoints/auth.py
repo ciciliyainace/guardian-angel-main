@@ -540,6 +540,27 @@ def verify_email(
     }
 
 
+@router.post("/verify-me", response_model=GenericMessageResponse)
+def verify_current_user_email(
+    current_user: User = Depends(require_authenticated_user),
+    db: Database = Depends(get_db),
+) -> Any:
+    """Instantly verify the currently authenticated user's email address."""
+    user_repo = UserRepository(db)
+    user_repo.mark_email_verified(current_user.id)
+    AuditService(db).log(
+        actor=current_user.username,
+        action="VerifyEmail",
+        target=f"user:{current_user.id}",
+        result="Success",
+        reason="Authenticated user verified email directly in dashboard",
+    )
+    return {
+        "status": "success",
+        "message": f"Email address '{current_user.email}' has been successfully verified.",
+    }
+
+
 @router.post("/resend-verification", response_model=GenericMessageResponse)
 def resend_verification(
     payload: ResendVerificationRequest,
@@ -548,7 +569,7 @@ def resend_verification(
     """Resend email verification link with rate limiting."""
     token_repo = TokenRepository(db)
     user_repo = UserRepository(db)
-    email_service = EmailService()
+    email_service = EmailService(db)
 
     clean_email = payload.email.strip().lower()
 
