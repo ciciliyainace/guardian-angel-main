@@ -136,6 +136,20 @@ export interface SensorItem {
   collector_details: Record<string, any>;
 }
 
+export interface SensorEnrollmentResult {
+  success: boolean;
+  sensor_id: string;
+  name?: string;
+  api_key?: string;
+  enrollment_credential?: string;
+  sensor_token?: string;
+  workspace_id: string;
+  workspace_name: string;
+  status: string;
+  message: string;
+  expires_at?: string;
+}
+
 export const api = {
   // Authentication
   login: async (usernameOrEmail: string, password: string) => {
@@ -241,21 +255,6 @@ export const api = {
     return res.json();
   },
 
-  sensors: () => request<any[]>("/sensors", () => []),
-  enrollSensor: (data: { sensor_id: string; name: string; hostname?: string; collector_types: string[] }) =>
-    request<any>("/sensors/enroll", () => ({}), {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-  rotateSensorKey: (sensorId: string) =>
-    request<any>(`/sensors/${encodeURIComponent(sensorId)}/rotate-key`, () => ({}), {
-      method: "POST",
-    }),
-  revokeSensor: (sensorId: string) =>
-    request<any>(`/sensors/${sensorId}/revoke`, () => ({}), {
-      method: "POST",
-    }),
-
   // Events & Traffic
   events: () => request<SecurityEvent[]>("/events", () => mock.events),
   getEvent: (id: string) =>
@@ -315,15 +314,52 @@ export const api = {
     })),
   sensors: () => request<SensorItem[]>("/sensors", () => []),
   enrollSensor: (data: { sensor_id: string; name: string; hostname?: string; collector_types?: string[] }) =>
-    request<{ sensor_id: string; name: string; api_key: string; status: string; message: string }>("/sensors/enroll", () => ({
+    request<SensorEnrollmentResult>("/sensors/enroll", () => ({
+      success: true,
       sensor_id: data.sensor_id,
       name: data.name,
-      api_key: "sen_live_mock_key_only",
-      status: "active",
+      api_key: "sen_enroll_demo_mode_key",
+      enrollment_credential: "sen_enroll_demo_mode_key",
+      workspace_id: "demo_workspace",
+      workspace_name: "Demo Workspace",
+      status: "pending_enrollment",
       message: "Sensor enrolled in demo fallback mode",
     }), {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+  generateSensorKey: (data: { sensor_id: string; name?: string; hostname?: string; collector_types?: string[] }) =>
+    request<SensorEnrollmentResult>("/sensors/keys", () => ({
+      success: true,
+      sensor_id: data.sensor_id,
+      name: data.name || data.sensor_id,
+      api_key: "sen_enroll_demo_mode_key",
+      enrollment_credential: "sen_enroll_demo_mode_key",
+      workspace_id: "demo_workspace",
+      workspace_name: "Demo Workspace",
+      status: "pending_enrollment",
+      message: "Sensor key generated in demo fallback mode",
+    }), {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  rotateSensorKey: (sensorId: string) =>
+    request<SensorEnrollmentResult>(`/sensors/${encodeURIComponent(sensorId)}/rotate-key`, () => ({
+      success: true,
+      sensor_id: sensorId,
+      name: sensorId,
+      api_key: "sen_enroll_demo_mode_key",
+      enrollment_credential: "sen_enroll_demo_mode_key",
+      workspace_id: "demo_workspace",
+      workspace_name: "Demo Workspace",
+      status: "pending_enrollment",
+      message: "Key rotated in demo fallback mode",
+    }), {
+      method: "POST",
+    }),
+  revokeSensor: (sensorId: string) =>
+    request<any>(`/sensors/${encodeURIComponent(sensorId)}/revoke`, () => ({}), {
+      method: "POST",
     }),
   categoryCounts: (origin = "live", timeRange = "24h") =>
     request(`/analytics/categories?origin=${origin}&range=${timeRange}`, () => (origin === "simulated" ? mock.categoryCounts : [])),

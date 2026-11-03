@@ -21,6 +21,11 @@ import {
   KeyRound,
   ShieldAlert,
   Building,
+  Copy,
+  Check,
+  Terminal,
+  Key,
+  RefreshCw,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -92,7 +97,34 @@ function Settings() {
   const [newSensorId, setNewSensorId] = useState("");
   const [newSensorName, setNewSensorName] = useState("");
   const [enrollingSensor, setEnrollingSensor] = useState(false);
-  const [enrolledKey, setEnrolledKey] = useState<string | null>(null);
+  const [revealedCredential, setRevealedCredential] = useState<{
+    sensorId: string;
+    sensorName: string;
+    enrollmentCredential?: string;
+    sensorToken?: string;
+    expiresAt?: string;
+    workspaceName?: string;
+    workspaceId?: string;
+    isRotation?: boolean;
+  } | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const copyToClipboard = async (text: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldName);
+      toast.success(`${fieldName} copied to clipboard`);
+      setTimeout(() => setCopiedField(null), 2500);
+    } catch {
+      toast.error(`Failed to copy ${fieldName}`);
+    }
+  };
+
+  const dismissCredential = () => {
+    setRevealedCredential(null);
+    setCopiedField(null);
+    toast.info("Credential dismissed and purged from view.");
+  };
 
   // Security Login Form State
   const [loginUser, setLoginUser] = useState("admin");
@@ -155,7 +187,7 @@ function Settings() {
   const handleEnrollSensor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSensorId.trim() || !newSensorName.trim()) {
-      toast.error("Sensor ID and Name are required");
+      toast.error("Sensor Identifier and Display Name are required");
       return;
     }
     setEnrollingSensor(true);
@@ -165,8 +197,25 @@ function Settings() {
         name: newSensorName.trim(),
         collector_types: ["windows_sockets", "suricata"],
       });
-      setEnrolledKey(res.api_key);
-      toast.success("Sensor enrolled successfully!");
+
+      // Clear separation of one-time desktop enrollment credential vs runtime sensor token
+      const cred = res.enrollment_credential || (res.api_key?.startsWith("sen_enroll_") ? res.api_key : undefined);
+      const token = res.sensor_token || (res.api_key?.startsWith("sen_live_") ? res.api_key : undefined);
+
+      setRevealedCredential({
+        sensorId: res.sensor_id || newSensorId.trim(),
+        sensorName: res.name || newSensorName.trim(),
+        enrollmentCredential: cred || res.api_key,
+        sensorToken: token,
+        expiresAt: res.expires_at,
+        workspaceName: res.workspace_name || profile.workspace_name,
+        workspaceId: res.workspace_id,
+        isRotation: false,
+      });
+
+      toast.success("Sensor Registered — One-Time Credential Generated", {
+        description: `Enrollment credential generated for '${res.sensor_id}'. Paste into Step 8 of Windows Sensor Setup.`,
+      });
       setNewSensorId("");
       setNewSensorName("");
       const updated = await api.sensors();
@@ -181,9 +230,23 @@ function Settings() {
   const handleRotateSensorKey = async (sensorId: string) => {
     try {
       const res = await api.rotateSensorKey(sensorId);
-      const key = res.enrollment_credential || res.api_key;
-      setEnrolledKey(key);
-      toast.success(`Fresh enrollment key generated for '${sensorId}'`);
+      const cred = res.enrollment_credential || (res.api_key?.startsWith("sen_enroll_") ? res.api_key : undefined);
+      const token = res.sensor_token || (res.api_key?.startsWith("sen_live_") ? res.api_key : undefined);
+
+      setRevealedCredential({
+        sensorId: res.sensor_id || sensorId,
+        sensorName: res.name || sensorId,
+        enrollmentCredential: cred || res.api_key,
+        sensorToken: token,
+        expiresAt: res.expires_at,
+        workspaceName: res.workspace_name || profile.workspace_name,
+        workspaceId: res.workspace_id,
+        isRotation: true,
+      });
+
+      toast.success(`Fresh Enrollment Credential Generated for '${sensorId}'`, {
+        description: "Paste into Step 8 of your Windows Sensor Setup wizard.",
+      });
       const updated = await api.sensors();
       setSensorsList(updated || []);
     } catch (err: any) {
@@ -632,17 +695,198 @@ function Settings() {
                     </div>
                   </form>
 
-                  {enrolledKey && (
-                    <div className="mt-3 rounded border border-primary/40 bg-primary/10 p-3 text-xs">
-                      <p className="font-semibold text-primary">Sensor Enrolled Successfully!</p>
-                      <p className="mt-1 text-muted-foreground">
-                        Configure your collector client with this API key. Keep it secure:
-                      </p>
-                      <code className="mt-1 block font-mono text-xs bg-background p-1.5 rounded border select-all">
-                        {enrolledKey}
-                      </code>
+                  {/* One-Time Credential Reveal Modal / Banner */}
+                  {revealedCredential && (
+                    <div className="mt-4 rounded-lg border-2 border-primary/50 bg-card p-4 space-y-4 shadow-lg animate-in fade-in">
+                      {/* Top Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/80 pb-3">
+                        <div className="flex items-center gap-2">
+                          <KeyRound className="size-4 text-primary shrink-0" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-foreground text-xs">
+                                {revealedCredential.isRotation ? "Sensor Credential Rotated" : "New Sensor Enrolled"}
+                              </span>
+                              <span className="rounded bg-primary/15 text-primary border border-primary/30 px-1.5 py-0.5 text-[10px] font-medium">
+                                One-Time Reveal
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              Sensor ID: <span className="font-mono text-foreground font-semibold">{revealedCredential.sensorId}</span>
+                              {" · "}Workspace: <span className="text-foreground">{revealedCredential.workspaceName || "Personal Workspace"}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={dismissCredential}
+                          className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground shrink-0 self-start sm:self-auto"
+                        >
+                          <X className="size-3.5 mr-1" /> Dismiss &amp; Purge
+                        </Button>
+                      </div>
+
+                      {/* 1. One-Time Desktop Enrollment Credential */}
+                      {revealedCredential.enrollmentCredential && (
+                        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <Key className="size-3.5 text-amber-400" />
+                              <span className="text-xs font-semibold text-amber-300">
+                                Enrollment Credential (One-Time Desktop Setup)
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-amber-300/80 font-mono">
+                              Single-Use · Valid 7 Days
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            This is your temporary authorization code. Copy and paste this credential into <strong className="text-foreground">Step 8: Connect &amp; Enroll Sensor</strong> of your Windows Sensor Setup desktop wizard.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 font-mono text-xs bg-background/90 p-2 rounded border border-amber-500/30 text-amber-200 select-all break-all font-medium">
+                              {revealedCredential.enrollmentCredential}
+                            </code>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => copyToClipboard(revealedCredential.enrollmentCredential!, "Enrollment Credential")}
+                              className="h-8 text-xs shrink-0 gap-1.5 border-amber-500/40 text-amber-300 hover:bg-amber-500/20"
+                            >
+                              {copiedField === "Enrollment Credential" ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
+                              {copiedField === "Enrollment Credential" ? "Copied" : "Copy Credential"}
+                            </Button>
+                          </div>
+                          {revealedCredential.expiresAt && (
+                            <p className="text-[10px] text-muted-foreground">
+                              Expires: {new Date(revealedCredential.expiresAt).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 2. Sensor Authentication Token (if issued) */}
+                      {revealedCredential.sensorToken && (
+                        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <ShieldCheck className="size-3.5 text-emerald-400" />
+                              <span className="text-xs font-semibold text-emerald-300">
+                                Sensor Authentication Token (Long-Lived Collector Key)
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-emerald-300/80 font-mono">
+                              Collector Daemon Runtime
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            Persistent token used exclusively by the background daemon (<code className="text-foreground font-mono">sensor_agent.py</code> or Windows Service) to authenticate heartbeats and telemetry via the <code className="text-foreground font-mono">X-Sensor-Key</code> header.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 font-mono text-xs bg-background/90 p-2 rounded border border-emerald-500/30 text-emerald-200 select-all break-all font-medium">
+                              {revealedCredential.sensorToken}
+                            </code>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => copyToClipboard(revealedCredential.sensorToken!, "Sensor Token")}
+                              className="h-8 text-xs shrink-0 gap-1.5 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20"
+                            >
+                              {copiedField === "Sensor Token" ? <Check className="size-3.5 text-emerald-400" /> : <Copy className="size-3.5" />}
+                              {copiedField === "Sensor Token" ? "Copied" : "Copy Token"}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. Step 8 Windows Sensor Setup Instructions */}
+                      <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-xs">
+                        <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                          <Terminal className="size-3.5 text-primary" />
+                          Windows Sensor Setup Wizard — Step 8 Instructions
+                        </div>
+                        <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-[11px] pl-1 leading-relaxed">
+                          <li>
+                            Open the <strong>SentinelAI Windows Sensor Setup</strong> desktop application as Administrator.
+                          </li>
+                          <li>
+                            Proceed through the setup wizard (Prerequisites, Npcap, Suricata, Network Adapter) until you arrive at <strong className="text-foreground">Step 8: Connect &amp; Enroll Sensor</strong>.
+                          </li>
+                          <li>
+                            Ensure the <strong>Backend URL</strong> is set to: <code className="font-mono text-foreground font-medium">https://guardian-angel-main-1.onrender.com</code>
+                          </li>
+                          <li>
+                            Set <strong>Sensor Name</strong> to match: <code className="font-mono text-foreground font-medium">{revealedCredential.sensorId}</code>
+                          </li>
+                          <li>
+                            Paste the <strong>Enrollment Credential</strong> (<code className="font-mono text-foreground font-medium">sen_enroll_...</code>) copied above into the <em>Sensor Enrollment Credential</em> field.
+                          </li>
+                          <li>
+                            Click <strong>Connect &amp; Enroll Sensor</strong>. The desktop application will automatically exchange the credential for a persistent Sensor Authentication Token and activate live packet forwarding.
+                          </li>
+                        </ol>
+                      </div>
+
+                      {/* 4. One-Time Reveal Policy Notice */}
+                      <div className="flex items-start gap-2 rounded border border-amber-500/20 bg-amber-500/5 p-2.5 text-[11px] text-muted-foreground">
+                        <AlertTriangle className="size-4 text-amber-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <strong className="text-foreground">Security Safeguard:</strong> This credential is displayed once and is never stored in plaintext on the server. If you close this tab or navigate away before enrolling the sensor, you will need to click <span className="font-medium text-foreground">Rotate Key</span> in the table above to generate a new enrollment credential.
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={dismissCredential}
+                          className="h-7 text-xs"
+                        >
+                          I have copied the credential — Dismiss &amp; Purge from View
+                        </Button>
+                      </div>
                     </div>
                   )}
+                </div>
+
+                {/* Permanent Credential Architecture Reference Card */}
+                <div className="rounded-lg border bg-muted/15 p-4 space-y-3">
+                  <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <ShieldCheck className="size-3.5 text-primary" /> SentinelAI Authentication &amp; Credential Architecture
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    To maintain zero-trust security and multi-tenant workspace isolation, SentinelAI strictly separates user browser sessions from host sensor operations.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
+                    <div className="rounded border bg-background/60 p-3 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground text-[11px]">
+                        <KeyRound className="size-3 text-cyan-400" /> User Access JWT
+                      </div>
+                      <p className="text-[10px] font-mono text-muted-foreground">Header: Authorization: Bearer &lt;jwt&gt;</p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Issued upon analyst login to the web dashboard. Grants UI and API query permissions. Expires in 24 hours. <strong>Never</strong> provide your user JWT to the sensor agent.
+                      </p>
+                    </div>
+                    <div className="rounded border bg-background/60 p-3 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground text-[11px]">
+                        <Key className="size-3 text-amber-400" /> Enrollment Credential
+                      </div>
+                      <p className="text-[10px] font-mono text-muted-foreground">Format: sen_enroll_&lt;32_hex&gt;</p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Generated in this dashboard. Single-use and valid for 7 days. Paste this into <strong>Step 8</strong> of the Windows Sensor Setup application to claim ownership of the sensor.
+                      </p>
+                    </div>
+                    <div className="rounded border bg-background/60 p-3 space-y-1.5">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground text-[11px]">
+                        <ShieldCheck className="size-3 text-emerald-400" /> Sensor Authentication Token
+                      </div>
+                      <p className="text-[10px] font-mono text-muted-foreground">Header: X-Sensor-Key: sen_live_...</p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Issued automatically to the Windows agent upon successful Step 8 enrollment. Used continuously by background daemons to transmit genuine packet telemetry and heartbeats.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </Panel>
