@@ -262,7 +262,8 @@ def login(
         claimed = repo.try_claim_first_login_notification(user.id, now)
         if claimed:
             client_ip = request.client.host if request.client else None
-            email_service.send_first_login_email(user, now, ip_address=client_ip)
+            user_agent = request.headers.get("user-agent")
+            email_service.send_first_login_email(user, now, ip_address=client_ip, user_agent=user_agent)
 
     expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     token = create_access_token(
@@ -540,27 +541,6 @@ def verify_email(
     }
 
 
-@router.post("/verify-me", response_model=GenericMessageResponse)
-def verify_current_user_email(
-    current_user: User = Depends(require_authenticated_user),
-    db: Database = Depends(get_db),
-) -> Any:
-    """Instantly verify the currently authenticated user's email address."""
-    user_repo = UserRepository(db)
-    user_repo.mark_email_verified(current_user.id)
-    AuditService(db).log(
-        actor=current_user.username,
-        action="VerifyEmail",
-        target=f"user:{current_user.id}",
-        result="Success",
-        reason="Authenticated user verified email directly in dashboard",
-    )
-    return {
-        "status": "success",
-        "message": f"Email address '{current_user.email}' has been successfully verified.",
-    }
-
-
 @router.post("/resend-verification", response_model=GenericMessageResponse)
 def resend_verification(
     payload: ResendVerificationRequest,
@@ -572,6 +552,13 @@ def resend_verification(
     email_service = EmailService(db)
 
     clean_email = payload.email.strip().lower()
+
+    # Rate limiting: max 3 requests per 15 minutes
+    if token_repo.is_rate_limited(clean_email, "email_verification", max_requests=3, window_minutes=15):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded. You can request at most 3 verification emails every 15 minutes.",
+        )
 
     if token_repo.check_resend_cooldown(clean_email, "email_verification", cooldown_seconds=60):
         raise HTTPException(

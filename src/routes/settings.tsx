@@ -1,7 +1,27 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Loader2, Plus, ShieldCheck, Cpu, Edit3, Save, X, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  ShieldCheck,
+  Cpu,
+  Edit3,
+  Save,
+  X,
+  AlertTriangle,
+  Mail,
+  LifeBuoy,
+  HelpCircle,
+  Info,
+  ExternalLink,
+  CheckCircle2,
+  AlertCircle,
+  Send,
+  KeyRound,
+  ShieldAlert,
+  Building,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,11 +34,21 @@ import { api, getAuthToken } from "@/lib/api";
 const TABS = ["profile", "sensors", "security", "appearance", "help", "about", "feedback"] as const;
 type Tab = (typeof TABS)[number];
 const T = "Settings — Sentinel AI";
-const D = "Profile, workspace sensors, appearance and application settings.";
+const D = "Profile, workspace sensors, security operations, and support settings.";
+
 export const Route = createFileRoute("/settings")({
   validateSearch: (s: Record<string, unknown>): { tab?: Tab } =>
     TABS.includes(s["tab"] as Tab) ? { tab: s["tab"] as Tab } : {},
-  head: () => ({ meta: [{ title: T }, { name: "description", content: D }, { property: "og:title", content: T }, { property: "og:description", content: D }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
+  head: () => ({
+    meta: [
+      { title: T },
+      { name: "description", content: D },
+      { property: "og:title", content: T },
+      { property: "og:description", content: D },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Settings,
 });
 
@@ -64,16 +94,23 @@ function Settings() {
   const [enrollingSensor, setEnrollingSensor] = useState(false);
   const [enrolledKey, setEnrolledKey] = useState<string | null>(null);
 
-  // Feedback State
-  const [fbCategory, setFbCategory] = useState("False Positive");
-  const [fbMessage, setFbMessage] = useState("");
-  const [submittingFb, setSubmittingFb] = useState(false);
-
   // Security Login Form State
   const [loginUser, setLoginUser] = useState("admin");
   const [loginPass, setLoginPass] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
   const [hasToken, setHasToken] = useState(!!getAuthToken());
+
+  // Support & Feedback Form State
+  const [supportSubject, setSupportSubject] = useState("");
+  const [supportCategory, setSupportCategory] = useState("Account & Verification");
+  const [supportContactEmail, setSupportContactEmail] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
+  const [submittingSupport, setSubmittingSupport] = useState(false);
+  const [supportTicketSubmitted, setSupportTicketSubmitted] = useState<{
+    ticket_id: string;
+    subject: string;
+    contact_email: string;
+  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -90,6 +127,9 @@ function Settings() {
             workspace_name: p.workspace_name || (p as any).workspaceName,
             default_workspace_id: p.default_workspace_id || (p as any).defaultWorkspaceId,
           });
+          if (!supportContactEmail) {
+            setSupportContactEmail(p.email || user?.email || "");
+          }
         }
       })
       .catch(() => {})
@@ -162,27 +202,6 @@ function Settings() {
     navigate({ to: "/login" });
   };
 
-  const handleSendFeedback = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fbMessage.trim()) {
-      toast.error("Please enter a feedback message");
-      return;
-    }
-    setSubmittingFb(true);
-    try {
-      await api.submitFeedback(fbCategory, fbMessage);
-      toast.success("Feedback submitted to SentinelAI security team");
-      setFbMessage("");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to submit feedback";
-      toast.error(msg);
-    } finally {
-      setSubmittingFb(false);
-    }
-  };
-
-  const [instantVerifying, setInstantVerifying] = useState(false);
-
   const handleResendVerification = async () => {
     const targetEmail = profile.email || user?.email;
     if (!targetEmail) return;
@@ -190,35 +209,20 @@ function Settings() {
     try {
       const data = await resendVerification(targetEmail);
       if (data.email_status === "awaiting_configuration") {
-        toast.warning("SMTP Not Configured on Render", {
-          description: "Your Render backend does not have SMTP credentials configured. Click 'Verify Now' to verify immediately, or configure SMTP in Render Dashboard.",
+        toast.warning("Email Delivery Service Pending Configuration", {
+          description:
+            "SMTP credentials for revenreven287@gmail.com are not configured on the backend hosting provider. Please set SMTP_PASSWORD in your backend environment settings.",
           duration: 9000,
         });
       } else {
         toast.info("Verification Request Dispatched", {
-          description: data.message || "A verification link has been sent to your email.",
+          description: data.message || `A verification link has been dispatched to ${targetEmail}.`,
         });
       }
     } catch (err: any) {
       toast.error(err?.message || "Failed to resend verification email.");
     } finally {
       setResendingVerification(false);
-    }
-  };
-
-  const handleInstantVerify = async () => {
-    try {
-      setInstantVerifying(true);
-      await api.verifyMe();
-      setProfile((prev) => ({ ...prev, email_verified: true }));
-      await refreshUser();
-      toast.success("Email Verified", {
-        description: "Your email address has been verified successfully.",
-      });
-    } catch (err: any) {
-      toast.error(err?.message || "Verification failed.");
-    } finally {
-      setInstantVerifying(false);
     }
   };
 
@@ -244,7 +248,11 @@ function Settings() {
       setIsEditingProfile(false);
       await refreshUser();
       toast.success("Profile Updated", {
-        description: `Your profile has been saved. ${updated.email !== profile.email ? "A verification link has been dispatched to " + updated.email : ""}`,
+        description: `Your profile has been saved. ${
+          updated.email !== profile.email
+            ? "A cryptographic verification link has been dispatched to " + updated.email
+            : ""
+        }`,
       });
     } catch (err: any) {
       toast.error("Update Failed", {
@@ -255,19 +263,66 @@ function Settings() {
     }
   };
 
+  const handleSendSupportMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetEmail = supportContactEmail.trim() || profile.email || user?.email || "";
+    if (!targetEmail) {
+      toast.error("Please provide a valid contact email address.");
+      return;
+    }
+    if (!supportSubject.trim()) {
+      toast.error("Please enter a subject for your support inquiry.");
+      return;
+    }
+    if (!supportMessage.trim()) {
+      toast.error("Please describe your question or issue in detail.");
+      return;
+    }
+
+    setSubmittingSupport(true);
+    try {
+      const res = await api.submitSupportMessage({
+        subject: supportSubject.trim(),
+        category: supportCategory,
+        email: targetEmail,
+        name: profile.displayName || profile.username || undefined,
+        message: supportMessage.trim(),
+      });
+      setSupportTicketSubmitted({
+        ticket_id: res.ticket_id,
+        subject: res.subject,
+        contact_email: res.contact_email,
+      });
+      toast.success("Support Ticket Logged", {
+        description: `Reference: ${res.ticket_id}. Confirmation dispatched to ${res.contact_email}.`,
+        duration: 8000,
+      });
+      setSupportSubject("");
+      setSupportMessage("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to submit support message";
+      toast.error(msg);
+    } finally {
+      setSubmittingSupport(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <PageHeader title="Settings" description={D} />
+
       <Tabs value={tab} onValueChange={(v) => navigate({ search: { tab: v as Tab } })}>
         <TabsList className="flex-wrap">
           {TABS.map((t) => (
             <TabsTrigger key={t} value={t} className="capitalize">
-              {t}
+              {t === "feedback" ? "Contact Support" : t}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        {/* Profile Tab */}
+        {/* ------------------------------------------------------------- */}
+        {/* Profile Tab                                                   */}
+        {/* ------------------------------------------------------------- */}
         <TabsContent value="profile">
           <Panel
             title="User Profile"
@@ -310,7 +365,7 @@ function Settings() {
                     className="h-9 text-sm"
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Updating your email will set its status to unverified until confirmed via the link sent to your inbox.
+                    Changing your email address will reset its status to unverified until confirmed via the link sent to your inbox.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 pt-2">
@@ -353,7 +408,7 @@ function Settings() {
                 <div>
                   <span className="font-medium text-foreground">Email: </span>
                   <span className="font-mono text-xs text-muted-foreground">{profile.email}</span>
-                  {Boolean(profile.email_verified || (profile as any).emailVerified || user?.email_verified) ? (
+                  {Boolean(profile.email_verified) ? (
                     <span className="ml-2 inline-flex items-center rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
                       ✓ Verified
                     </span>
@@ -370,15 +425,6 @@ function Settings() {
                         className="h-auto p-0 text-xs text-primary underline"
                       >
                         {resendingVerification ? "Sending..." : "Resend Link"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleInstantVerify}
-                        disabled={instantVerifying}
-                        className="h-6 px-2 text-[11px] font-medium border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                      >
-                        {instantVerifying ? "Verifying..." : "Verify Now"}
                       </Button>
                     </span>
                   )}
@@ -412,121 +458,149 @@ function Settings() {
           </Panel>
         </TabsContent>
 
-        {/* Sensors Tab */}
+        {/* ------------------------------------------------------------- */}
+        {/* Sensors Tab                                                   */}
+        {/* ------------------------------------------------------------- */}
         <TabsContent value="sensors">
           <div className="space-y-4">
             <Panel title="Enrolled Network Sensors">
               <div className="space-y-4">
                 <p className="text-xs text-muted-foreground">
-                  Sensors deployed with your workspace token ingest genuine network telemetry from Suricata and Windows host sockets.
+                  Sensors deployed across your network stream genuine raw packet telemetry and Suricata intrusion detection events into your isolated tenant workspace.
                 </p>
 
                 {loadingSensors ? (
-                  <div className="flex h-16 items-center text-sm text-muted-foreground">
-                    <Loader2 className="mr-2 size-4 animate-spin" /> Loading sensors...
+                  <div className="flex h-20 items-center justify-center text-xs text-muted-foreground">
+                    <Loader2 className="mr-2 size-4 animate-spin" /> Loading enrolled sensors...
                   </div>
                 ) : sensorsList.length === 0 ? (
-                  <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    No active sensors enrolled in this workspace. Enroll a sensor below to stream live telemetry.
+                  <div className="rounded-md border border-dashed p-6 text-center text-xs text-muted-foreground">
+                    No active sensors enrolled in this workspace yet. Use the enrollment form below to register a Windows socket or Suricata collector.
                   </div>
                 ) : (
-                  <div className="divide-y rounded-lg border">
-                    {sensorsList.map((s: any) => (
-                      <div key={s.sensor_id} className="flex items-center justify-between p-3 text-sm">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-foreground">{s.name}</span>
-                            <span className="font-mono text-xs text-muted-foreground">({s.sensor_id})</span>
-                            {s.is_alive ? (
-                              <span className="rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
-                                Active / Live
+                  <div className="overflow-x-auto rounded border">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b bg-muted/40 text-muted-foreground">
+                        <tr>
+                          <th className="p-2.5 font-medium">Sensor ID</th>
+                          <th className="p-2.5 font-medium">Sensor Name</th>
+                          <th className="p-2.5 font-medium">Status</th>
+                          <th className="p-2.5 font-medium">Collectors</th>
+                          <th className="p-2.5 font-medium">Last Heartbeat</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {sensorsList.map((s) => (
+                          <tr key={s.sensor_id} className="hover:bg-muted/20">
+                            <td className="p-2.5 font-mono text-foreground">{s.sensor_id}</td>
+                            <td className="p-2.5 font-medium">{s.name}</td>
+                            <td className="p-2.5">
+                              <span
+                                className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                  s.status === "active"
+                                    ? "bg-success/15 text-success"
+                                    : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                {s.status}
                               </span>
-                            ) : (
-                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                                Offline
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Host: {s.hostname || "unknown"} · Collectors: {(s.collector_types || []).join(", ")} · Ingested: {s.total_events_ingested || 0} events
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                            </td>
+                            <td className="p-2.5 text-muted-foreground">
+                              {(s.collector_types || []).join(", ") || "raw_socket"}
+                            </td>
+                            <td className="p-2.5 font-mono text-[11px] text-muted-foreground">
+                              {s.last_heartbeat_at ? new Date(s.last_heartbeat_at).toLocaleString() : "Pending"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
-              </div>
-            </Panel>
 
-            <Panel title="Enroll New Network Sensor">
-              {enrolledKey ? (
-                <div className="space-y-3 rounded-lg border border-success/30 bg-success/5 p-4 text-sm">
-                  <div className="font-semibold text-success">Sensor Enrolled Successfully!</div>
-                  <p className="text-xs text-muted-foreground">
-                    Copy and store this API key now. It will not be shown again:
-                  </p>
-                  <pre className="rounded bg-background p-2 font-mono text-xs select-all text-primary border">{enrolledKey}</pre>
-                  <Button size="sm" variant="outline" onClick={() => setEnrolledKey(null)}>
-                    Done
-                  </Button>
+                {/* Enrollment Form */}
+                <div className="rounded-lg border bg-card p-4">
+                  <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 mb-2">
+                    <Plus className="size-3.5 text-primary" /> Enroll New Network Sensor
+                  </h4>
+                  <form onSubmit={handleEnrollSensor} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">Sensor Identifier</label>
+                      <Input
+                        value={newSensorId}
+                        onChange={(e) => setNewSensorId(e.target.value)}
+                        placeholder="e.g. sensor-win-edge-01"
+                        className="h-8 text-xs mt-1"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-muted-foreground">Display Name</label>
+                      <Input
+                        value={newSensorName}
+                        onChange={(e) => setNewSensorName(e.target.value)}
+                        placeholder="e.g. Gateway Packet Collector"
+                        className="h-8 text-xs mt-1"
+                        required
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button type="submit" size="sm" disabled={enrollingSensor} className="h-8 text-xs w-full gap-1.5">
+                        {enrollingSensor ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                        Generate Sensor Key
+                      </Button>
+                    </div>
+                  </form>
+
+                  {enrolledKey && (
+                    <div className="mt-3 rounded border border-primary/40 bg-primary/10 p-3 text-xs">
+                      <p className="font-semibold text-primary">Sensor Enrolled Successfully!</p>
+                      <p className="mt-1 text-muted-foreground">
+                        Configure your collector client with this API key. Keep it secure:
+                      </p>
+                      <code className="mt-1 block font-mono text-xs bg-background p-1.5 rounded border select-all">
+                        {enrolledKey}
+                      </code>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <form onSubmit={handleEnrollSensor} className="max-w-md space-y-3 text-sm">
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Sensor ID</label>
-                    <Input
-                      value={newSensorId}
-                      onChange={(e) => setNewSensorId(e.target.value)}
-                      placeholder="e.g. sensor-win-workstation-01"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Friendly Name</label>
-                    <Input
-                      value={newSensorName}
-                      onChange={(e) => setNewSensorName(e.target.value)}
-                      placeholder="e.g. Primary Windows Analyst Workstation"
-                      required
-                    />
-                  </div>
-                  <Button type="submit" size="sm" disabled={enrollingSensor}>
-                    {enrollingSensor && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                    <Plus className="mr-1 size-3.5" /> Enroll Sensor
-                  </Button>
-                </form>
-              )}
+              </div>
             </Panel>
           </div>
         </TabsContent>
 
-        {/* Security Tab */}
+        {/* ------------------------------------------------------------- */}
+        {/* Security Tab                                                  */}
+        {/* ------------------------------------------------------------- */}
         <TabsContent value="security">
-          <Panel title="Account & API Authentication">
-            <div className="max-w-md space-y-4 text-sm">
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <div className="font-medium">Active Session Status</div>
-                  <div className="text-xs text-muted-foreground">
-                    {hasToken ? "JWT Token Active" : "Unauthenticated (Operating in Guest/Demo Mode)"}
-                  </div>
+          <Panel title="SOC Security & Authentication Controls">
+            <div className="space-y-4 max-w-lg">
+              <div className="rounded-lg border p-4 space-y-2 text-xs">
+                <div className="flex items-center gap-2 font-medium text-foreground">
+                  <KeyRound className="size-4 text-primary" /> Multi-Factor & Session Security
                 </div>
-                {hasToken && (
-                  <Button variant="outline" size="sm" onClick={handleLogout}>
-                    Sign Out
-                  </Button>
-                )}
+                <p className="text-muted-foreground">
+                  Authentication tokens are signed using HMAC-SHA256 and expire after 24 hours. Rate limiting automatically locks accounts for 15 minutes after 5 failed authentication attempts to protect against brute-force intrusion.
+                </p>
               </div>
 
-              {!hasToken && (
-                <form onSubmit={handleLogin} className="space-y-3 rounded-lg border p-4">
-                  <div className="text-xs font-medium uppercase text-muted-foreground">Sign In to Backend</div>
+              {hasToken ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-xs text-success">
+                    <CheckCircle2 className="size-4" /> Active Authenticated Session
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs">
+                    Terminate Current Session (Sign Out)
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleLogin} className="space-y-3">
                   <div>
                     <label className="text-xs text-muted-foreground">Username</label>
                     <Input
                       value={loginUser}
                       onChange={(e) => setLoginUser(e.target.value)}
-                      placeholder="Username or email"
+                      placeholder="Username"
                       required
                     />
                   </div>
@@ -544,92 +618,283 @@ function Settings() {
                     {loggingIn ? <Loader2 className="mr-2 size-3 animate-spin" /> : null}
                     Authenticate
                   </Button>
-                  <p className="text-[11px] text-muted-foreground">
-                    Default analyst: <code className="rounded bg-muted px-1">ciciliya-inace</code> / <code className="rounded bg-muted px-1">&lt;configured password&gt;</code>
-                  </p>
                 </form>
               )}
             </div>
           </Panel>
         </TabsContent>
 
-        {/* Appearance Tab */}
+        {/* ------------------------------------------------------------- */}
+        {/* Appearance Tab                                                */}
+        {/* ------------------------------------------------------------- */}
         <TabsContent value="appearance">
-          <Panel title="Theme">
-            <div className="flex gap-2">
-              {(["dark", "light", "system"] as const).map((t) => (
-                <Button
-                  key={t}
-                  variant={theme === t ? "default" : "outline"}
-                  onClick={() => setTheme(t)}
-                  className="capitalize"
-                >
-                  {t}
-                </Button>
-              ))}
+          <Panel title="Display Theme">
+            <div className="space-y-3 max-w-md">
+              <p className="text-xs text-muted-foreground">
+                Customize the high-contrast dashboard appearance for optimal SOC operational visibility in day and night environments.
+              </p>
+              <div className="flex gap-2">
+                {(["dark", "light", "system"] as const).map((t) => (
+                  <Button
+                    key={t}
+                    variant={theme === t ? "default" : "outline"}
+                    onClick={() => setTheme(t)}
+                    className="capitalize text-xs"
+                  >
+                    {t}
+                  </Button>
+                ))}
+              </div>
             </div>
           </Panel>
         </TabsContent>
 
-        {/* Help Tab */}
+        {/* ------------------------------------------------------------- */}
+        {/* Help Tab — Comprehensive Troubleshooting Guide               */}
+        {/* ------------------------------------------------------------- */}
         <TabsContent value="help">
-          <Panel title="Help & Navigation">
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <p>• Press <kbd className="rounded border bg-muted px-1 font-mono text-xs">⌘K</kbd> or <kbd className="rounded border bg-muted px-1 font-mono text-xs">Ctrl+K</kbd> to search pages, alerts, and block requests.</p>
-              <p>• Review and approve firewall block requests strictly from the Firewall Management tab.</p>
-              <p>• Detection models and rules operate on an alert-first principle: automated blocking is disabled by default.</p>
+          <Panel title="SentinelAI SOC Help & Authentication Guide">
+            <div className="space-y-6 text-sm text-muted-foreground">
+              {/* Section 1: Authentication */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <ShieldCheck className="size-4 text-primary" /> SentinelAI Authentication & Multi-Tenant Workspaces
+                </h3>
+                <p className="text-xs leading-relaxed">
+                  SentinelAI enforces strict zero-trust tenant workspace isolation. Every registered security analyst operates within a dedicated workspace identifier (e.g. <code>ws_usr_*</code>). All telemetry streams, enrolled sensors, machine learning alert classifications, and firewall block proposals are strictly scoped to the authenticated tenant.
+                </p>
+              </div>
+
+              {/* Section 2: Email Verification */}
+              <div className="space-y-2 rounded-lg border bg-muted/20 p-4">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <Mail className="size-4 text-primary" /> Email Verification Lifecycle & Security Policy
+                </h3>
+                <p className="text-xs leading-relaxed">
+                  To protect enterprise SOC environments from spoofing and unauthorized alert dispatching, account identities must be cryptographically confirmed:
+                </p>
+                <ul className="list-disc list-inside text-xs space-y-1.5 pl-1">
+                  <li>
+                    <strong>Single-Use Cryptographic Tokens:</strong> Verification links contain a high-entropy, random cryptographic token whose SHA-256 hash is validated against MongoDB Atlas.
+                  </li>
+                  <li>
+                    <strong>Strict Token Expiration:</strong> Verification tokens expire exactly 24 hours after issuance.
+                  </li>
+                  <li>
+                    <strong>Atomic Consumption:</strong> Each token can only be redeemed once. Once redeemed, the user account is atomically updated with verified status and an audit event is recorded.
+                  </li>
+                  <li>
+                    <strong>Genuine Verification Proof:</strong> The green <span className="text-success font-medium">✓ Verified</span> badge is awarded <em>only</em> upon authentic token redemption via email or validated Google OpenID Connect claim.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Section 3: Resending Verification Links */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <HelpCircle className="size-4 text-primary" /> Resending Verification Links & Rate Limiting
+                </h3>
+                <p className="text-xs leading-relaxed">
+                  If you have not received your verification email, click <strong>Resend Link</strong> under <em>Settings &gt; Profile</em>. Note the following operational safeguards:
+                </p>
+                <ul className="list-disc list-inside text-xs space-y-1 pl-1">
+                  <li>A 60-second cooldown is enforced between consecutive resend attempts.</li>
+                  <li>A maximum of 3 verification emails can be requested within any 15-minute window to avoid spam flooding.</li>
+                  <li>Check your spam, junk, or promotional folders for dispatches from <code>revenreven287@gmail.com</code>.</li>
+                </ul>
+              </div>
+
+              {/* Section 4: Access Recovery */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <KeyRound className="size-4 text-primary" /> Account Access Recovery & Password Reset
+                </h3>
+                <p className="text-xs leading-relaxed">
+                  If credentials are lost, use the <strong>Forgot Password</strong> link on the login portal. Password reset tokens expire in 30 minutes, are strictly single-use, and invalidate all prior reset tokens upon issuance.
+                </p>
+              </div>
+
+              {/* Section 5: Troubleshooting & Support Contact */}
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-xs space-y-2">
+                <div className="font-semibold text-foreground flex items-center gap-1.5">
+                  <LifeBuoy className="size-4 text-primary" /> Official Support & Incident Escalation
+                </div>
+                <p className="text-muted-foreground">
+                  If you encounter delivery issues, identity synchronization errors, or require sensor provisioning assistance, our cybersecurity support team is directly reachable at:
+                </p>
+                <p className="font-mono text-xs">
+                  <a
+                    href="mailto:revenreven287@gmail.com"
+                    className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline"
+                  >
+                    <Mail className="size-3.5" /> revenreven287@gmail.com
+                  </a>
+                </p>
+              </div>
             </div>
           </Panel>
         </TabsContent>
 
-        {/* About Tab */}
+        {/* ------------------------------------------------------------- */}
+        {/* About Tab — Full Architecture & Details                       */}
+        {/* ------------------------------------------------------------- */}
         <TabsContent value="about">
-          <Panel title="About Sentinel AI">
-            <p className="text-sm text-muted-foreground">
-              SentinelAI — AI-Powered Firewall Attack Detection System for Computer Networks.
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Architecture: FastAPI Backend · Scikit-learn (Random Forest & Isolation Forest) · Suricata IDS Connector · Windows Defender Firewall Integration · React Frontend.
-            </p>
+          <Panel title="About Sentinel AI — SOC Defense System">
+            <div className="space-y-5 text-sm text-muted-foreground">
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Enterprise AI-Powered Network Firewall Attack Detection System
+                </h3>
+                <p className="text-xs leading-relaxed">
+                  SentinelAI is an advanced intrusion detection and autonomous firewall response platform designed to protect computer network infrastructure against port scans, distributed denial of service (DDoS), credential brute-force attacks, and lateral reconnaissance.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="rounded border bg-card p-3.5 space-y-1.5">
+                  <div className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Cpu className="size-3.5 text-primary" /> Telemetry & Sensor Architecture
+                  </div>
+                  <p className="text-muted-foreground">
+                    Native multi-engine telemetry ingestion utilizing Suricata IDS EVE JSON parsers alongside real-time Windows raw socket packet capture collectors with safe offset checkpointing.
+                  </p>
+                </div>
+
+                <div className="rounded border bg-card p-3.5 space-y-1.5">
+                  <div className="font-semibold text-foreground flex items-center gap-1.5">
+                    <ShieldAlert className="size-3.5 text-primary" /> Hybrid Machine Learning Engine
+                  </div>
+                  <p className="text-muted-foreground">
+                    Supervised Random Forest / Decision Tree multi-class attack classifiers combined with unsupervised Isolation Forest anomaly detectors for zero-day threat discovery.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-2 text-xs">
+                <div className="font-semibold text-foreground">System & Build Specifications</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-muted-foreground font-mono text-[11px]">
+                  <div>Platform: v1.0.0</div>
+                  <div>API Protocol: v1.0.0</div>
+                  <div>ML Engine: v1.2.0</div>
+                  <div>Database: MongoDB Atlas</div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-xs space-y-1.5">
+                <div className="font-semibold text-foreground flex items-center gap-1.5">
+                  <Mail className="size-4 text-primary" /> Primary Security & Support Contact
+                </div>
+                <p className="text-muted-foreground">
+                  For administrative inquiries, production sensor keys, or SOC assistance, contact the SentinelAI Security Team:
+                </p>
+                <p className="font-mono text-xs">
+                  <a
+                    href="mailto:revenreven287@gmail.com"
+                    className="inline-flex items-center gap-1.5 font-semibold text-primary hover:underline"
+                  >
+                    revenreven287@gmail.com <ExternalLink className="size-3" />
+                  </a>
+                </p>
+              </div>
+            </div>
           </Panel>
         </TabsContent>
 
-        {/* Feedback Tab */}
+        {/* ------------------------------------------------------------- */}
+        {/* Contact Support & Feedback Tab                                */}
+        {/* ------------------------------------------------------------- */}
         <TabsContent value="feedback">
-          <Panel title="Submit Feedback & False Positives">
-            <form onSubmit={handleSendFeedback} className="max-w-lg space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Category</label>
-                <select
-                  value={fbCategory}
-                  onChange={(e) => setFbCategory(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="False Positive">False Positive Report</option>
-                  <option value="Rule Suggestion">Rule Suggestion</option>
-                  <option value="Bug Report">System Bug Report</option>
-                  <option value="Feature Request">Feature Request</option>
-                </select>
+          <Panel title="Contact Security Support & Report False Positives">
+            <div className="space-y-5">
+              {/* Official Banner */}
+              <div className="rounded-lg border border-primary/40 bg-primary/10 p-4 text-xs space-y-2">
+                <div className="flex items-center gap-2 font-semibold text-primary">
+                  <LifeBuoy className="size-4" /> Dedicated SentinelAI Support Channel
+                </div>
+                <p className="text-foreground leading-relaxed">
+                  Have questions about email verification, sensor deployment, or false-positive firewall alerts? Submit a ticket below or write directly to our designated team at{" "}
+                  <a href="mailto:revenreven287@gmail.com" className="font-bold underline text-primary">
+                    revenreven287@gmail.com
+                  </a>
+                  . Every submission is recorded in our audit log and acknowledged via email.
+                </p>
               </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Message / Explanation</label>
-                <Textarea
-                  value={fbMessage}
-                  onChange={(e) => setFbMessage(e.target.value)}
-                  placeholder="Describe the issue, false positive event ID, or suggested rule parameter..."
-                  rows={4}
-                  required
-                />
-              </div>
-              <Button type="submit" size="sm" disabled={submittingFb}>
-                {submittingFb && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
-                Submit Feedback
-              </Button>
-            </form>
+
+              {supportTicketSubmitted && (
+                <div className="rounded-lg border border-success/40 bg-success/10 p-4 text-xs space-y-1.5">
+                  <div className="flex items-center gap-2 font-semibold text-success">
+                    <CheckCircle2 className="size-4" /> Ticket Submitted Successfully [{supportTicketSubmitted.ticket_id}]
+                  </div>
+                  <p className="text-muted-foreground">
+                    Your inquiry regarding <strong>{supportTicketSubmitted.subject}</strong> has been logged. An automated acknowledgment has been dispatched to <code>{supportTicketSubmitted.contact_email}</code>.
+                  </p>
+                </div>
+              )}
+
+              {/* Form */}
+              <form onSubmit={handleSendSupportMessage} className="max-w-lg space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-foreground">Inquiry Category</label>
+                  <select
+                    value={supportCategory}
+                    onChange={(e) => setSupportCategory(e.target.value)}
+                    className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="Account & Verification">Account & Email Verification</option>
+                    <option value="Sensor & Telemetry Ingestion">Sensor & Telemetry Ingestion</option>
+                    <option value="Firewall & Detection Rules">Firewall & Detection Rules</option>
+                    <option value="False Positive Alert Report">False Positive Alert Report</option>
+                    <option value="General Support">General Support Inquiry</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground">Contact Email Address</label>
+                  <Input
+                    type="email"
+                    value={supportContactEmail}
+                    onChange={(e) => setSupportContactEmail(e.target.value)}
+                    placeholder="you@domain.com"
+                    required
+                    className="mt-1 h-9 text-xs"
+                  />
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    A ticket receipt and response will be dispatched to this address.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground">Subject / Summary</label>
+                  <Input
+                    value={supportSubject}
+                    onChange={(e) => setSupportSubject(e.target.value)}
+                    placeholder="Brief summary of your inquiry (e.g. Email verification assistance)"
+                    required
+                    className="mt-1 h-9 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground">Detailed Explanation</label>
+                  <Textarea
+                    value={supportMessage}
+                    onChange={(e) => setSupportMessage(e.target.value)}
+                    placeholder="Describe your issue, steps to reproduce, or questions..."
+                    rows={5}
+                    required
+                    className="mt-1 text-xs"
+                  />
+                </div>
+
+                <Button type="submit" size="sm" disabled={submittingSupport} className="gap-1.5 text-xs">
+                  {submittingSupport ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                  Submit Support Ticket
+                </Button>
+              </form>
+            </div>
           </Panel>
         </TabsContent>
       </Tabs>
     </div>
   );
 }
-

@@ -127,7 +127,7 @@ class UserRepository:
         now = datetime.now(timezone.utc)
         res = self.collection.update_one(
             {"id": int(user_id)},
-            {"$set": {"email_verified": True, "updated_at": now}},
+            {"$set": {"email_verified": True, "email_verified_at": now, "updated_at": now}},
         )
         return res.modified_count > 0
 

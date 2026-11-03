@@ -39,16 +39,18 @@ class Settings(BaseSettings):
     LOGIN_MAX_FAILED_ATTEMPTS: int = 5
     LOGIN_LOCKOUT_MINUTES: int = 15
 
-    # Email & SMTP Notifications
-    SMTP_HOST: str = ""
+    # Email & SMTP Notifications (Primary Designated Sender & Support: revenreven287@gmail.com)
+    SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USERNAME: str = ""
-    SMTP_PASSWORD: str = ""
+    SMTP_USERNAME: str = "revenreven287@gmail.com"
+    SMTP_PASSWORD: str = ""  # Provided securely via environment variable in deployment host
+    SMTP_SECURITY: str = "starttls"  # "starttls" | "ssl"
     SMTP_USE_TLS: bool = True
     SMTP_USE_SSL: bool = False
-    MAIL_FROM_EMAIL: str = "no-reply@sentinelai.local"
-    MAIL_FROM_NAME: str = "SentinelAI Security"
-    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    MAIL_FROM_EMAIL: str = "revenreven287@gmail.com"
+    MAIL_FROM_NAME: str = "SentinelAI Security Team"
+    SUPPORT_EMAIL: str = "revenreven287@gmail.com"
+    FRONTEND_BASE_URL: str = "https://guardian-angel-main.vercel.app"
 
     # Google OAuth 2.0 / OpenID Connect
     GOOGLE_CLIENT_ID: str = ""

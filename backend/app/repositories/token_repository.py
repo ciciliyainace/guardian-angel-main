@@ -106,3 +106,23 @@ class TokenRepository:
                 if created > cutoff:
                     return True
         return False
+
+    def is_rate_limited(self, email: str, token_type: str, max_requests: int = 3, window_minutes: int = 15) -> bool:
+        """
+        Check if more than `max_requests` tokens of this type have been created
+        for this email address in the last `window_minutes`.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+        cursor = self.collection.find({
+            "email": email.lower().strip(),
+            "token_type": token_type,
+        })
+        count = 0
+        for item in cursor:
+            created = item.get("created_at")
+            if created:
+                if getattr(created, "tzinfo", None) is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if created > cutoff:
+                    count += 1
+        return count >= max_requests

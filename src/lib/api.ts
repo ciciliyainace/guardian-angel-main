@@ -219,19 +219,22 @@ export const api = {
     return res.json();
   },
 
-  verifyMe: async () => {
+  submitSupportMessage: async (payload: { subject: string; category: string; message: string; email?: string; name?: string }) => {
     const token = getAuthToken();
-    if (!token) throw new Error("Authentication required.");
-    const res = await fetch(`${API_BASE_URL}/auth/verify-me`, {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_BASE_URL}/support/messages`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
+      headers,
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => null);
-      throw new Error(err?.detail || "Failed to verify email.");
+      throw new Error(err?.detail || "Failed to submit support inquiry.");
     }
     return res.json();
   },

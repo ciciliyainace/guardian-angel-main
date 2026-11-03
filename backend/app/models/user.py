@@ -16,6 +16,7 @@ class User:
         auth_providers: Optional[List[str]] = None,
         google_sub: Optional[str] = None,
         email_verified: bool = False,
+        email_verified_at: Optional[datetime] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
         first_login_at: Optional[datetime] = None,
@@ -40,6 +41,7 @@ class User:
         self.auth_providers = auth_providers if auth_providers is not None else ["password"]
         self.google_sub = google_sub
         self.email_verified = email_verified
+        self.email_verified_at = email_verified_at
         self.created_at = created_at or datetime.now(timezone.utc)
         self.updated_at = updated_at or datetime.now(timezone.utc)
         self.first_login_at = first_login_at
@@ -65,6 +67,7 @@ class User:
             "auth_providers": self.auth_providers,
             "google_sub": self.google_sub,
             "email_verified": self.email_verified,
+            "email_verified_at": self.email_verified_at,
             "default_workspace_id": self.default_workspace_id,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -117,6 +120,7 @@ class User:
             auth_providers=doc.get("auth_providers", ["password"]),
             google_sub=doc.get("google_sub"),
             email_verified=is_verified,
+            email_verified_at=doc.get("email_verified_at"),
             default_workspace_id=doc.get("default_workspace_id"),
             created_at=created,
             updated_at=doc.get("updated_at"),
