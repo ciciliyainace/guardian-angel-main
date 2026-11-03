@@ -6,22 +6,22 @@ import type { SecurityEvent, BlockRequest, DetectionRule, AlertStatus, Severity 
 export const LIVE_RENDER_API = "https://guardian-angel-main-1.onrender.com/api/v1";
 
 export function resolveApiBaseUrl(): string {
-  const envUrl = (import.meta.env["VITE_API_BASE_URL"] as string | undefined)?.trim();
-  // 1. Explicit live environment variable
-  if (envUrl && !envUrl.includes("127.0.0.1") && !envUrl.includes("localhost")) {
-    return envUrl.replace(/\/+$/, "");
-  }
-
-  // 2. Browser runtime: if running on Vercel or any non-localhost domain, route to the live Render backend
+  // 1. Browser runtime: if running on Vercel or any non-localhost domain, route to the live Render backend
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    if (host !== "localhost" && host !== "127.0.0.1" && host !== "::1") {
+    if (host && host !== "localhost" && host !== "127.0.0.1" && host !== "::1") {
       return LIVE_RENDER_API;
     }
   }
 
-  // 3. Production build
-  if (import.meta.env.PROD && (!envUrl || envUrl.includes("127.0.0.1") || envUrl.includes("localhost"))) {
+  // 2. Explicit live environment variable
+  const envUrl = (import.meta.env["VITE_API_BASE_URL"] as string | undefined)?.trim();
+  if (envUrl && !envUrl.includes("127.0.0.1") && !envUrl.includes("localhost")) {
+    return envUrl.replace(/\/+$/, "");
+  }
+
+  // 3. Production build (Vercel serverless / Nitro SSR)
+  if (import.meta.env.PROD || (typeof process !== "undefined" && process.env?.["NODE_ENV"] === "production")) {
     return LIVE_RENDER_API;
   }
 
@@ -29,6 +29,7 @@ export function resolveApiBaseUrl(): string {
   return envUrl || "http://127.0.0.1:8000/api/v1";
 }
 
+export const getApiBaseUrl = (): string => resolveApiBaseUrl();
 export const API_BASE_URL = resolveApiBaseUrl();
 export const DEMO_MODE = false;
 
@@ -69,7 +70,8 @@ async function request<T>(path: string, demo: () => T, init?: RequestInit): Prom
   }
 
   try {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
+    const baseUrl = getApiBaseUrl();
+    const res = await fetch(`${baseUrl}${path}`, {
       ...init,
       headers,
     });
@@ -244,6 +246,10 @@ export const api = {
     request<any>("/sensors/enroll", () => ({}), {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+  rotateSensorKey: (sensorId: string) =>
+    request<any>(`/sensors/${encodeURIComponent(sensorId)}/rotate-key`, () => ({}), {
+      method: "POST",
     }),
   revokeSensor: (sensorId: string) =>
     request<any>(`/sensors/${sensorId}/revoke`, () => ({}), {

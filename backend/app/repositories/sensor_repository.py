@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from pymongo.database import Database
+from pymongo import ReturnDocument
 from app.models.sensor import Sensor, SensorHeartbeat
 from app.core.logging_config import logger
 
@@ -21,11 +22,94 @@ class SensorRepository:
         return sensor
 
     def get_by_id(self, sensor_id: str) -> Optional[Sensor]:
-        doc = self.sensors_col.find_one({"sensor_id": sensor_id})
+        doc = self.sensors_col.find_one({"sensor_id": str(sensor_id)})
         return Sensor.from_doc(doc) if doc else None
 
     def get_by_key_hash(self, key_hash: str) -> Optional[Sensor]:
-        doc = self.sensors_col.find_one({"api_key_hash": key_hash, "status": "active"})
+        """Lookup active or registered sensor by its persistent sensor API token or key hash."""
+        doc = self.sensors_col.find_one({
+            "$or": [
+                {"sensor_token_hash": key_hash},
+                {"api_key_hash": key_hash},
+            ],
+            "status": {"$ne": "revoked"},
+        })
+        return Sensor.from_doc(doc) if doc else None
+
+    def get_by_enrollment_credential_hash(self, credential_hash: str) -> Optional[Sensor]:
+        """Lookup sensor with a matching pending or active enrollment credential."""
+        doc = self.sensors_col.find_one({
+            "$or": [
+                {"enrollment_credential_hash": credential_hash},
+                {"api_key_hash": credential_hash},
+            ],
+            "status": {"$ne": "revoked"},
+        })
+        return Sensor.from_doc(doc) if doc else None
+
+    def consume_enrollment_and_activate(
+        self,
+        sensor_id: str,
+        sensor_token_hash: str,
+        host_info: Optional[Dict[str, Any]] = None,
+        remote_ip: Optional[str] = None,
+    ) -> Optional[Sensor]:
+        """
+        Atomically consumes the one-time enrollment credential, records the long-lived
+        sensor token hash, activates the sensor to 'registered', and stores host details.
+        """
+        now = datetime.now(timezone.utc)
+        host_info = host_info or {}
+
+        update_set: Dict[str, Any] = {
+            "status": "registered",
+            "api_key_hash": sensor_token_hash,
+            "sensor_token_hash": sensor_token_hash,
+            "enrollment_credential_consumed": True,
+            "enrollment_credential_consumed_at": now,
+            "enrollment_credential_hash": None,
+            "enrolled_at": now,
+            "updated_at": now,
+            "collector_details": host_info,
+        }
+
+        if host_info.get("machine_name"):
+            update_set["hostname"] = host_info.get("machine_name")
+        if remote_ip:
+            update_set["ip_address"] = remote_ip
+        if host_info.get("agent_version"):
+            update_set["agent_version"] = host_info.get("agent_version")
+
+        doc = self.sensors_col.find_one_and_update(
+            {"sensor_id": str(sensor_id)},
+            {"$set": update_set},
+            return_document=ReturnDocument.AFTER,
+        )
+        return Sensor.from_doc(doc) if doc else None
+
+    def rotate_enrollment_credential(
+        self,
+        sensor_id: str,
+        new_credential_hash: str,
+        expires_at: datetime,
+    ) -> Optional[Sensor]:
+        """Regenerate a one-time enrollment credential for an existing sensor identity."""
+        now = datetime.now(timezone.utc)
+        doc = self.sensors_col.find_one_and_update(
+            {"sensor_id": str(sensor_id)},
+            {
+                "$set": {
+                    "enrollment_credential_hash": new_credential_hash,
+                    "api_key_hash": new_credential_hash,
+                    "enrollment_credential_expires_at": expires_at,
+                    "enrollment_credential_consumed": False,
+                    "enrollment_credential_consumed_at": None,
+                    "status": "pending_enrollment",
+                    "updated_at": now,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
         return Sensor.from_doc(doc) if doc else None
 
     def record_heartbeat(
@@ -34,20 +118,31 @@ class SensorRepository:
         heartbeat: SensorHeartbeat,
         remote_ip: Optional[str] = None,
     ) -> bool:
+        """Record periodic heartbeat from an authenticated sensor agent."""
         now = datetime.now(timezone.utc)
         update_fields: Dict[str, Any] = {
             "last_heartbeat_at": now,
-            "collector_details": heartbeat.collectors,
+            "status": "online",
         }
         if remote_ip:
             update_fields["ip_address"] = remote_ip
+        if heartbeat.collectors:
+            update_fields["collector_details"] = heartbeat.collectors
+        if heartbeat.suricata_running is not None:
+            update_fields["suricata_running"] = heartbeat.suricata_running
+        if heartbeat.npcap_running is not None:
+            update_fields["npcap_running"] = heartbeat.npcap_running
+        if heartbeat.uptime_seconds:
+            update_fields["uptime_seconds"] = heartbeat.uptime_seconds
+        if heartbeat.agent_version:
+            update_fields["agent_version"] = heartbeat.agent_version
 
         res = self.sensors_col.update_one(
-            {"sensor_id": sensor_id, "status": "active"},
+            {"sensor_id": sensor_id, "status": {"$ne": "revoked"}},
             {"$set": update_fields},
         )
 
-        # Store heartbeat record
+        # Store heartbeat log beacon
         self.heartbeats_col.insert_one(heartbeat.to_doc())
         return res.modified_count > 0 or res.matched_count > 0
 
@@ -70,6 +165,9 @@ class SensorRepository:
                     "status": "revoked",
                     "revoked_at": now,
                     "revoked_by": revoked_by,
+                    "api_key_hash": None,
+                    "sensor_token_hash": None,
+                    "enrollment_credential_hash": None,
                 }
             },
         )
@@ -79,21 +177,19 @@ class SensorRepository:
         cursor = self.sensors_col.find({}).sort("created_at", -1)
         return [Sensor.from_doc(d) for d in cursor if d]
 
-    def get_active_sensors(self, timeout_sec: int = 60) -> List[Sensor]:
+    def list_by_workspace(self, workspace_id: str) -> List[Sensor]:
+        cursor = self.sensors_col.find({"workspace_id": str(workspace_id)}).sort("created_at", -1)
+        return [Sensor.from_doc(d) for d in cursor if d]
+
+    def get_active_sensors(self, timeout_sec: int = 90) -> List[Sensor]:
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout_sec)
         cursor = self.sensors_col.find({
-            "status": "active",
+            "status": {"$in": ["active", "registered", "online"]},
             "last_heartbeat_at": {"$gte": cutoff},
         })
         return [Sensor.from_doc(d) for d in cursor if d]
 
-    def get_monitoring_state(self, timeout_sec: int = 60) -> Dict[str, Any]:
-        """
-        Calculates the definitive monitoring state based on actual registered sensors and recent telemetry.
-        LIVE: Active sensor connected with heartbeat <= timeout_sec AND telemetry received in last 5 minutes.
-        STANDBY: Active sensor connected with heartbeat <= timeout_sec, waiting for new telemetry.
-        NO_LIVE_SENSOR: No active sensors with recent heartbeat.
-        """
+    def get_monitoring_state(self, timeout_sec: int = 90) -> Dict[str, Any]:
         active_sensors = self.get_active_sensors(timeout_sec=timeout_sec)
         if not active_sensors:
             return {
@@ -106,18 +202,19 @@ class SensorRepository:
                 "message": "No live sensor connected — waiting for network telemetry.",
             }
 
-        # Check if telemetry was received recently (within 10 minutes)
         five_min_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
         has_recent_telemetry = any(
-            s.last_telemetry_at and s.last_telemetry_at.replace(tzinfo=timezone.utc) >= five_min_ago
+            s.last_telemetry_at and (
+                s.last_telemetry_at.replace(tzinfo=timezone.utc) if getattr(s.last_telemetry_at, "tzinfo", None) is None else s.last_telemetry_at
+            ) >= five_min_ago
             for s in active_sensors
         )
 
         suricata_op = any(
-            s.collector_details.get("suricata") == "operational" for s in active_sensors
+            s.suricata_running or s.collector_details.get("suricata") == "operational" for s in active_sensors
         )
         windows_op = any(
-            s.collector_details.get("windows_sockets") in ("operational", "active")
+            s.npcap_running or s.collector_details.get("windows_sockets") in ("operational", "active")
             for s in active_sensors
         )
 
@@ -137,4 +234,3 @@ class SensorRepository:
             "windows_socket_operational": windows_op,
             "message": message,
         }
-

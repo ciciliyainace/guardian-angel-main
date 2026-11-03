@@ -49,7 +49,7 @@ def test_sensor_enrollment_and_auth(client: TestClient, admin_token: str):
     data = res.json()
     assert data["sensor_id"] == "sensor-test-01"
     assert "api_key" in data
-    assert data["api_key"].startswith("sen_live_")
+    assert data["api_key"].startswith("sen_enroll_") or data["api_key"].startswith("sen_live_")
     sensor_key = data["api_key"]
 
     # 3. Heartbeat without key fails

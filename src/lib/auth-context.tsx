@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { API_BASE_URL, getAuthToken, setAuthToken, clearAuthToken } from "@/lib/api";
+import { getApiBaseUrl, getAuthToken, setAuthToken, clearAuthToken } from "@/lib/api";
 
 export interface AuthUser {
   id: number;
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/me`, {
+      const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
         headers: {
           Authorization: `Bearer ${currentToken}`,
           "Content-Type": "application/json",
@@ -132,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (usernameOrEmail: string, password: string): Promise<AuthUser> => {
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -165,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const e = err as Error;
       if (e.message.includes("Failed to fetch") || e.message.toLowerCase().includes("networkerror")) {
         throw new Error(
-          `Cannot connect to SentinelAI API at ${API_BASE_URL}. Please ensure your backend is online and VITE_API_BASE_URL is configured in your deployment settings.`
+          `Cannot connect to SentinelAI API at ${getApiBaseUrl()}. Please ensure your backend is online and VITE_API_BASE_URL is configured in your deployment settings.`
         );
       }
       throw err;
@@ -174,7 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (payload: RegisterPayload): Promise<AuthUser> => {
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      const res = await fetch(`${getApiBaseUrl()}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -191,7 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const e = err as Error;
       if (e.message.includes("Failed to fetch") || e.message.toLowerCase().includes("networkerror")) {
         throw new Error(
-          `Cannot connect to SentinelAI API at ${API_BASE_URL}. Please ensure your backend is online and VITE_API_BASE_URL is configured in your deployment settings.`
+          `Cannot connect to SentinelAI API at ${getApiBaseUrl()}. Please ensure your backend is online and VITE_API_BASE_URL is configured in your deployment settings.`
         );
       }
       throw err;
@@ -200,7 +200,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const getGoogleOAuthUrl = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/google/url`);
+      const res = await fetch(`${getApiBaseUrl()}/auth/google/url`);
       if (!res.ok) {
         return {
           configured: false,
@@ -218,7 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithGoogle = async (params: { id_token?: string; code?: string; redirect_uri?: string }): Promise<AuthUser> => {
-    const res = await fetch(`${API_BASE_URL}/auth/google`, {
+    const res = await fetch(`${getApiBaseUrl()}/auth/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
@@ -237,7 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const verifyEmail = async (token: string) => {
-    const res = await fetch(`${API_BASE_URL}/auth/verify-email`, {
+    const res = await fetch(`${getApiBaseUrl()}/auth/verify-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
@@ -254,7 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resendVerification = async (email: string) => {
-    const res = await fetch(`${API_BASE_URL}/auth/resend-verification`, {
+    const res = await fetch(`${getApiBaseUrl()}/auth/resend-verification`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
@@ -268,7 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const forgotPassword = async (email: string) => {
-    const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+    const res = await fetch(`${getApiBaseUrl()}/auth/forgot-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
@@ -282,7 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetPassword = async (token: string, password: string, confirmPassword: string) => {
-    const res = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+    const res = await fetch(`${getApiBaseUrl()}/auth/reset-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -303,7 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const currentToken = getAuthToken();
     try {
       if (currentToken) {
-        await fetch(`${API_BASE_URL}/auth/logout`, {
+        await fetch(`${getApiBaseUrl()}/auth/logout`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${currentToken}`,

@@ -178,6 +178,31 @@ function Settings() {
     }
   };
 
+  const handleRotateSensorKey = async (sensorId: string) => {
+    try {
+      const res = await api.rotateSensorKey(sensorId);
+      const key = res.enrollment_credential || res.api_key;
+      setEnrolledKey(key);
+      toast.success(`Fresh enrollment key generated for '${sensorId}'`);
+      const updated = await api.sensors();
+      setSensorsList(updated || []);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to rotate sensor key");
+    }
+  };
+
+  const handleRevokeSensor = async (sensorId: string) => {
+    if (!confirm(`Are you sure you want to revoke sensor '${sensorId}'?`)) return;
+    try {
+      await api.revokeSensor(sensorId);
+      toast.success(`Sensor '${sensorId}' has been revoked`);
+      const updated = await api.sensors();
+      setSensorsList(updated || []);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to revoke sensor");
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoggingIn(true);
@@ -484,35 +509,90 @@ function Settings() {
                         <tr>
                           <th className="p-2.5 font-medium">Sensor ID</th>
                           <th className="p-2.5 font-medium">Sensor Name</th>
-                          <th className="p-2.5 font-medium">Status</th>
+                          <th className="p-2.5 font-medium">Registration</th>
+                          <th className="p-2.5 font-medium">Connectivity</th>
                           <th className="p-2.5 font-medium">Collectors</th>
                           <th className="p-2.5 font-medium">Last Heartbeat</th>
+                          <th className="p-2.5 font-medium text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {sensorsList.map((s) => (
-                          <tr key={s.sensor_id} className="hover:bg-muted/20">
-                            <td className="p-2.5 font-mono text-foreground">{s.sensor_id}</td>
-                            <td className="p-2.5 font-medium">{s.name}</td>
-                            <td className="p-2.5">
-                              <span
-                                className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                                  s.status === "active"
-                                    ? "bg-success/15 text-success"
-                                    : "bg-muted text-muted-foreground"
-                                }`}
-                              >
-                                {s.status}
-                              </span>
-                            </td>
-                            <td className="p-2.5 text-muted-foreground">
-                              {(s.collector_types || []).join(", ") || "raw_socket"}
-                            </td>
-                            <td className="p-2.5 font-mono text-[11px] text-muted-foreground">
-                              {s.last_heartbeat_at ? new Date(s.last_heartbeat_at).toLocaleString() : "Pending"}
-                            </td>
-                          </tr>
-                        ))}
+                        {sensorsList.map((s) => {
+                          const conn = s.connectivity_status || (s.last_heartbeat_at ? "online" : "awaiting_heartbeat");
+                          return (
+                            <tr key={s.sensor_id} className="hover:bg-muted/20">
+                              <td className="p-2.5 font-mono text-foreground font-medium">{s.sensor_id}</td>
+                              <td className="p-2.5">{s.name}</td>
+                              <td className="p-2.5">
+                                <span
+                                  className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                    s.status === "registered" || s.status === "active"
+                                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                      : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                  }`}
+                                >
+                                  {s.status === "pending_enrollment" ? "Pending Setup" : "Registered"}
+                                </span>
+                              </td>
+                              <td className="p-2.5">
+                                {conn === "online" && (
+                                  <span className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    Online
+                                  </span>
+                                )}
+                                {conn === "awaiting_heartbeat" && (
+                                  <span className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                    <span className="size-1.5 rounded-full bg-amber-400" />
+                                    Awaiting Heartbeat
+                                  </span>
+                                )}
+                                {conn === "pending_enrollment" && (
+                                  <span className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-medium bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                                    <span className="size-1.5 rounded-full bg-cyan-400" />
+                                    Pending Setup
+                                  </span>
+                                )}
+                                {conn === "offline" && (
+                                  <span className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-medium bg-zinc-500/15 text-zinc-400 border border-zinc-500/30">
+                                    <span className="size-1.5 rounded-full bg-zinc-400" />
+                                    Offline
+                                  </span>
+                                )}
+                                {conn === "revoked" && (
+                                  <span className="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[10px] font-medium bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                    <span className="size-1.5 rounded-full bg-rose-400" />
+                                    Revoked
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2.5 text-muted-foreground">
+                                {(s.collector_types || []).join(", ") || "suricata, windows_sockets"}
+                              </td>
+                              <td className="p-2.5 font-mono text-[11px] text-muted-foreground">
+                                {s.last_heartbeat_at ? new Date(s.last_heartbeat_at).toLocaleString() : "Awaiting First Heartbeat"}
+                              </td>
+                              <td className="p-2.5 text-right space-x-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[11px] px-2"
+                                  onClick={() => handleRotateSensorKey(s.sensor_id)}
+                                >
+                                  Rotate Key
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-[11px] px-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                                  onClick={() => handleRevokeSensor(s.sensor_id)}
+                                >
+                                  Revoke
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
