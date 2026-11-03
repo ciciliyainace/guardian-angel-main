@@ -1,5 +1,5 @@
 from typing import Generator, Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, HTTPBearer, HTTPAuthorizationCredentials
 from pymongo.database import Database
 from app.core.database import get_db
@@ -34,6 +34,35 @@ def get_current_user(
         if isinstance(sub, int) or (isinstance(sub, str) and sub.isdigit()):
             user = user_repo.get_by_id(int(sub))
         # Secondary lookup: for backward compatibility if sub was username/email
+        if not user:
+            user = user_repo.get_by_username(str(sub)) or user_repo.get_by_username_or_email(str(sub))
+        return user
+    except Exception:
+        return None
+
+
+def get_optional_user_unlocked(
+    request: Request,
+    db: Database = Depends(get_db),
+) -> Optional[User]:
+    """
+    Extract and validate current authenticated user from request Authorization header
+    WITHOUT declaring an OpenAPI SecurityBase scheme. This avoids Swagger UI placing
+    a misleading lock icon on dual-mode endpoints (such as Mode 1 sensor enrollment).
+    """
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.lower().startswith("bearer "):
+        return None
+    raw_token = auth[7:].strip()
+    try:
+        payload = decode_access_token(raw_token)
+        sub = payload.get("sub")
+        if not sub:
+            return None
+        user_repo = UserRepository(db)
+        user = None
+        if isinstance(sub, int) or (isinstance(sub, str) and sub.isdigit()):
+            user = user_repo.get_by_id(int(sub))
         if not user:
             user = user_repo.get_by_username(str(sub)) or user_repo.get_by_username_or_email(str(sub))
         return user

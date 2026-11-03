@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pymongo.database import Database
 
 from app.core.database import get_db
-from app.api.dependencies import get_current_user, require_authenticated_user
+from app.api.dependencies import get_current_user, require_authenticated_user, get_optional_user_unlocked
 from app.models.user import User
 from app.models.sensor import Sensor, SensorHeartbeat
 from app.repositories.user_repository import UserRepository
@@ -80,11 +80,11 @@ def authenticate_sensor(
     return sensor
 
 
-@router.post("/enroll", response_model=SensorEnrollResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/enroll", response_model=SensorEnrollResponse, status_code=status.HTTP_201_CREATED, openapi_extra={"security": []})
 def enroll_sensor(
     req: SensorEnrollRequest,
     request: Request,
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_optional_user_unlocked),
     db: Database = Depends(get_db),
 ):
     """
