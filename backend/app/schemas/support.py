@@ -21,3 +21,4 @@ class SupportResponse(BaseModel):
     subject: str
     contact_email: str
     support_contact: str = "revenreven287@gmail.com"
+

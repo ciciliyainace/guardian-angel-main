@@ -38,3 +38,4 @@ class SupportRepository:
             .limit(limit)
         )
         return [SupportMessage.from_doc(doc) for doc in cursor if doc]
+

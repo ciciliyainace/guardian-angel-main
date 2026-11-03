@@ -70,3 +70,4 @@ class SupportMessage:
             updated_at=doc.get("updated_at"),
             _id=doc.get("_id"),
         )
+
