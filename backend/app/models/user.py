@@ -55,7 +55,7 @@ class User:
 
     def to_doc(self) -> Dict[str, Any]:
         """Serialize user to MongoDB document format."""
-        return {
+        doc = {
             "id": self.id,
             "email": self.email,
             "username": self.username,
@@ -65,7 +65,6 @@ class User:
             "role": self.role,
             "is_active": self.is_active,
             "auth_providers": self.auth_providers,
-            "google_sub": self.google_sub,
             "email_verified": self.email_verified,
             "email_verified_at": self.email_verified_at,
             "default_workspace_id": self.default_workspace_id,
@@ -78,6 +77,9 @@ class User:
             "failed_login_attempts": self.failed_login_attempts,
             "lockout_until": self.lockout_until,
         }
+        if self.google_sub:
+            doc["google_sub"] = self.google_sub
+        return doc
 
     @classmethod
     def from_doc(cls, doc: Optional[Dict[str, Any]]) -> Optional["User"]:

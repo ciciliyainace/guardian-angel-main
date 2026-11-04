@@ -192,7 +192,15 @@ def init_indexes(db: Database):
         db.users.create_index("username", unique=True)
         db.users.create_index("email", unique=True)
         db.users.create_index("id", unique=True)
-        db.users.create_index("google_sub", sparse=True)
+        try:
+            db.users.create_index(
+                "google_sub",
+                unique=True,
+                partialFilterExpression={"google_sub": {"$type": "string"}},
+                name="google_sub_1",
+            )
+        except Exception:
+            db.users.create_index("google_sub", sparse=True)
         db.users.create_index("default_workspace_id")
 
         # 1a. workspaces (Multi-tenant SaaS isolation)
