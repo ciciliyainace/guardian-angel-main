@@ -23,9 +23,74 @@ class EventRepository:
     def create_batch(self, events: List[NetworkEvent]) -> List[NetworkEvent]:
         if not events:
             return []
-        docs = [e.to_doc() for e in events]
-        self.collection.insert_many(docs)
+        from pymongo import UpdateOne
+        ops = [UpdateOne({"id": e.id}, {"$set": e.to_doc()}, upsert=True) for e in events]
+        self.collection.bulk_write(ops, ordered=False)
         return events
+
+    def bulk_upsert_events(self, events: List[NetworkEvent]) -> int:
+        """
+        Durable, idempotent bulk upsert of network events in a single network round-trip.
+        Safely handles new inserts, duplicate updates, and retries without duplicate key errors.
+        """
+        if not events:
+            return 0
+        from pymongo import UpdateOne
+        ops = [UpdateOne({"id": e.id}, {"$set": e.to_doc()}, upsert=True) for e in events]
+        try:
+            res = self.collection.bulk_write(ops, ordered=False)
+            return (res.upserted_count or 0) + (res.modified_count or 0)
+        except TypeError:
+            count = 0
+            for e in events:
+                self.create(e)
+                count += 1
+            return count
+
+    def find_duplicates_batch(
+        self,
+        candidate_keys: List[Tuple[str, str, Optional[int], Optional[int], str]],
+        min_timestamp_ms: int,
+    ) -> Dict[Tuple[str, str, Optional[int], Optional[int], str], NetworkEvent]:
+        """
+        Bulk query to identify existing duplicate flows for an entire batch in a single round-trip.
+        Returns a dict mapping (source_ip, dest_ip, src_port, dst_port, protocol) to the latest NetworkEvent.
+        """
+        if not candidate_keys:
+            return {}
+
+        unique_keys = list(set(candidate_keys))
+        or_clauses = []
+        for s_ip, d_ip, s_p, d_p, proto in unique_keys:
+            clause: Dict[str, Any] = {
+                "source_ip": s_ip,
+                "dest_ip": d_ip,
+                "protocol": proto,
+            }
+            if s_p is not None:
+                clause["src_port"] = s_p
+            if d_p is not None:
+                clause["dst_port"] = d_p
+            or_clauses.append(clause)
+
+        if not or_clauses:
+            return {}
+
+        query = {
+            "$or": or_clauses,
+            "timestamp": {"$gte": min_timestamp_ms},
+        }
+
+        duplicates_map: Dict[Tuple[str, str, Optional[int], Optional[int], str], NetworkEvent] = {}
+        cursor = self.collection.find(query).sort("timestamp", -1)
+        for doc in cursor:
+            ev = NetworkEvent.from_doc(doc)
+            if ev:
+                key = (ev.source_ip, ev.dest_ip, ev.src_port, ev.dst_port, ev.protocol)
+                if key not in duplicates_map:
+                    duplicates_map[key] = ev
+
+        return duplicates_map
 
     def find_duplicate(
         self,

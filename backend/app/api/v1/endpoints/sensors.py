@@ -1,6 +1,7 @@
 import secrets
 import hashlib
-from typing import List, Optional, Dict, Any
+import time
+from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pymongo.database import Database
@@ -28,6 +29,18 @@ from app.schemas.sensor import (
 
 router = APIRouter()
 
+# In-memory authentication cache for high-frequency sensor uploads (60s TTL)
+_SENSOR_AUTH_CACHE: Dict[str, Tuple[Sensor, float]] = {}
+_CACHE_TTL_SECONDS = 60.0
+
+
+def invalidate_sensor_auth_cache(key_hash: Optional[str] = None):
+    global _SENSOR_AUTH_CACHE
+    if key_hash:
+        _SENSOR_AUTH_CACHE.pop(key_hash, None)
+    else:
+        _SENSOR_AUTH_CACHE.clear()
+
 
 def authenticate_sensor(
     authorization: Optional[str] = Header(None, alias="Authorization"),
@@ -42,6 +55,7 @@ def authenticate_sensor(
       2. X-Sensor-Key: <sensor_token>
       3. X-API-Key: <sensor_token>
     Strictly forbids user JWTs from accessing sensor collector endpoints.
+    Uses in-memory cache to support multi-channel concurrent uploads without repetitive DB hits.
     """
     raw_token = None
     if authorization and authorization.lower().startswith("bearer "):
@@ -65,8 +79,16 @@ def authenticate_sensor(
         )
 
     key_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-    sensor_repo = SensorRepository(db)
-    sensor = sensor_repo.get_by_key_hash(key_hash)
+    now_ts = time.time()
+    cached = _SENSOR_AUTH_CACHE.get(key_hash)
+    if cached and now_ts < cached[1]:
+        sensor = cached[0]
+    else:
+        sensor_repo = SensorRepository(db)
+        sensor = sensor_repo.get_by_key_hash(key_hash)
+        if sensor:
+            _SENSOR_AUTH_CACHE[key_hash] = (sensor, now_ts + _CACHE_TTL_SECONDS)
+
     if not sensor:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -405,6 +427,7 @@ def revoke_sensor(
         )
 
     sensor_repo.revoke(sensor_id, revoked_by=current_user.username)
+    invalidate_sensor_auth_cache()
     return SensorRevokeResponse(
         sensor_id=sensor_id,
         status="revoked",
@@ -478,59 +501,23 @@ def ingest_telemetry_batch(
     """
     Ingest a batch of genuine network telemetry events from an enrolled sensor.
     Available under both /telemetry and /events/batch.
-    Dispatches to flow aggregator, normalizer, and hybrid detection pipeline.
+    Dispatches to bulk normalizer, deduplicator, and vectorized hybrid detection pipeline.
     Tenant workspace and owner are strictly bound from the sensor record.
     """
     event_service = EventService(db)
-    sensor_repo = SensorRepository(db)
-
-    received = len(req.events)
-    ingested = 0
-    duplicates = 0
-    alerts_generated = 0
-
-    for raw_event in req.events:
-        try:
-            collector = raw_event.get("collector") or ("suricata" if "event_type" in raw_event else "windows_sockets")
-            if collector == "suricata" or "event_type" in raw_event:
-                normalized = FlowAggregator.parse_suricata_eve(raw_event, sensor_id=sensor.sensor_id)
-            else:
-                normalized = FlowAggregator.parse_windows_socket(raw_event, sensor_id=sensor.sensor_id)
-
-            # Strictly bind to sensor's verified workspace and owner in DB
-            normalized["workspace_id"] = sensor.workspace_id
-            normalized["owner_user_id"] = sensor.owner_user_id
-
-            prev_alert_count = db.alerts.count_documents({})
-            saved = event_service.ingest_event(normalized, run_detection=True)
-
-            if saved.duplicates > 0:
-                duplicates += 1
-            else:
-                ingested += 1
-
-            new_alert_count = db.alerts.count_documents({})
-            if new_alert_count > prev_alert_count:
-                alerts_generated += (new_alert_count - prev_alert_count)
-        except Exception as e:
-            from app.core.logging_config import logger
-            logger.exception(f"Failed to ingest raw telemetry event from sensor '{sensor.sensor_id}': {e}")
-            continue
-
-    if ingested > 0 or duplicates > 0:
-        sensor_repo.record_telemetry_batch(sensor.sensor_id, ingested + duplicates)
+    stats = event_service.ingest_telemetry_batch_fast(req.events, sensor)
 
     now_iso = datetime.now(timezone.utc).isoformat()
     return TelemetryBatchIngestResponse(
         success=True,
         status="success",
         batch_id=req.batch_id,
-        processed_count=ingested + duplicates,
-        rejected_count=received - (ingested + duplicates),
-        received=received,
-        ingested=ingested,
-        duplicates=duplicates,
-        alerts_generated=alerts_generated,
+        processed_count=stats["processed_count"],
+        rejected_count=stats["rejected_count"],
+        received=stats["received"],
+        ingested=stats["ingested"],
+        duplicates=stats["duplicates"],
+        alerts_generated=stats["alerts_generated"],
         server_timestamp=now_iso,
-        message=f"Processed {ingested} events ({duplicates} duplicate flows ignored).",
+        message=f"Processed {stats['ingested']} events ({stats['duplicates']} duplicate flows ignored).",
     )

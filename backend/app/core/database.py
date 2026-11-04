@@ -221,8 +221,10 @@ def init_indexes(db: Database):
         db.network_events.create_index("category")
         db.network_events.create_index([("severity", 1), ("timestamp", -1)])
         db.network_events.create_index([("source_ip", 1), ("dest_ip", 1)])
+        db.network_events.create_index([("source_ip", 1), ("dest_ip", 1), ("protocol", 1), ("timestamp", -1)])
         db.network_events.create_index("data_origin")
         db.network_events.create_index("sensor_id")
+        db.network_events.create_index([("sensor_id", 1), ("timestamp", -1)])
         db.network_events.create_index("is_simulated")
         db.network_events.create_index([("sensor_id", 1), ("id", 1)])
 
@@ -239,6 +241,7 @@ def init_indexes(db: Database):
         # 3b. sensors & sensor_heartbeats (Live network telemetry architecture)
         db.sensors.create_index("sensor_id", unique=True)
         db.sensors.create_index("api_key_hash", unique=True)
+        db.sensors.create_index("sensor_token_hash", sparse=True)
         db.sensors.create_index("status")
         db.sensors.create_index([("workspace_id", 1), ("sensor_id", 1)])
         db.sensors.create_index("owner_user_id")

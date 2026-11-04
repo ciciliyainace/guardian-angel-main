@@ -5,6 +5,12 @@ import pytest
 from fastapi.testclient import TestClient
 import mongomock
 
+# Compatibility patch for mongomock with pymongo 4.10+ (ignores new 'sort' kwarg in UpdateOne)
+_orig_add_update = mongomock.collection.BulkOperationBuilder.add_update
+def _patched_add_update(self, selector, doc, multi=False, upsert=False, collation=None, array_filters=None, hint=None, **kwargs):
+    return _orig_add_update(self, selector, doc, multi=multi, upsert=upsert, collation=collation, array_filters=array_filters, hint=hint)
+mongomock.collection.BulkOperationBuilder.add_update = _patched_add_update
+
 # Set test environment
 os.environ["TESTING"] = "true"
 os.environ["DATABASE_TYPE"] = "mongodb"

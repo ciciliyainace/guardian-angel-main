@@ -18,6 +18,19 @@ class AlertRepository:
         self.collection.update_one({"id": alert.id}, {"$set": doc}, upsert=True)
         return alert
 
+    def create_batch(self, alerts: List[Alert]) -> List[Alert]:
+        """Bulk upsert alerts in a single round-trip."""
+        if not alerts:
+            return []
+        from pymongo import UpdateOne
+        ops = [UpdateOne({"id": a.id}, {"$set": a.to_doc()}, upsert=True) for a in alerts]
+        try:
+            self.collection.bulk_write(ops, ordered=False)
+        except TypeError:
+            for a in alerts:
+                self.create(a)
+        return alerts
+
     def filter_alerts(
         self,
         status: Optional[str] = None,
